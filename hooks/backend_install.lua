@@ -31,10 +31,10 @@ function PLUGIN:BackendInstall(ctx)
     local package_name
     if strings.has_prefix(repo, "pulumi-converter") then
         type = "converter"
-        package_name = repo:gsub("^pulumi-converter%-", "")
+        package_name = repo:gsub("^pulumi%-converter%-", "")
     elseif strings.has_prefix(repo, "pulumi-tool") then
         type = "tool"
-        package_name = repo:gsub("^pulumi-tool%-", "")
+        package_name = repo:gsub("^pulumi%-tool%-", "")
     else
         type = "resource"
         package_name = repo:gsub("^pulumi%-", "")
@@ -46,7 +46,18 @@ function PLUGIN:BackendInstall(ctx)
     local install_cmd = strings.join({ "pulumi", "plugin", "install", type, package_name, version }, " ")
     local result = cmd.exec(install_cmd)
     if result:match("error") or result:match("failed") then
-        error("Failed to install " .. type .. " " .. package_name .. "@" .. version .. ": " .. result)
+        error(
+            "Failed to install "
+                .. type
+                .. " "
+                .. package_name
+                .. "@"
+                .. version
+                .. ": "
+                .. result
+                .. "\n"
+                .. install_cmd
+        )
     end
 
     local pulumi_home = os.getenv("PULUMI_HOME")

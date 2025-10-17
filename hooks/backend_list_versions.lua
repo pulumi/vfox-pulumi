@@ -1,9 +1,9 @@
 local function classify(version)
     local major, minor, patch = version:match("^(%d+)%.(%d+)%.(%d+)$")
     if major then
-        return 0, tonumber(major), tonumber(minor), tonumber(patch), version
+        return 1, tonumber(major), tonumber(minor), tonumber(patch), version
     end
-    return 1, version
+    return 0, nil, nil, nil, version
 end
 
 local function stable_first_sort(a, b)
@@ -14,7 +14,7 @@ local function stable_first_sort(a, b)
         return a_rank < b_rank
     end
 
-    if a_rank == 0 then
+    if a_rank == 1 then
         if a_major ~= b_major then
             return a_major < b_major
         end
@@ -62,55 +62,43 @@ function PLUGIN:BackendListVersions(ctx)
     include_prerelease = include_prerelease == true
 
     local per_page = 100
-    local page = 1
     local versions = {}
     local seen = {}
 
-    while true do
-        local api_url =
-            string.format("https://api.github.com/repos/%s/releases?per_page=%d&page=%d", full_repo, per_page, page)
+    local api_url =
+        string.format("https://api.github.com/repos/%s/releases?per_page=%d", full_repo, per_page)
 
-        local resp, err = http.get({
-            url = api_url,
-            headers = headers,
-        })
+    local resp, err = http.get({
+        url = api_url,
+        headers = headers,
+    })
 
-        if err then
-            error("Failed to fetch versions for " .. tool .. ": " .. err)
-        end
+    if err then
+        error("Failed to fetch versions for " .. tool .. ": " .. err)
+    end
 
-        if resp.status_code ~= 200 then
-            error(("GitHub API returned status %d for %s"):format(resp.status_code, full_repo))
-        end
+    if resp.status_code ~= 200 then
+        error(("GitHub API returned status %d for %s"):format(resp.status_code, full_repo))
+    end
 
-        local releases = json.decode(resp.body)
-        if type(releases) ~= "table" or #releases == 0 then
-            break
-        end
+    local releases = json.decode(resp.body)
+    if type(releases) ~= "table" or #releases == 0 then
+        error("No versions found for " .. tool .. " in GitHub releases")
+    end
 
-        for _, release in ipairs(releases) do
-            if not release.draft and (include_prerelease or not release.prerelease) then
-                local tag = release.tag_name or ""
-                if tag ~= "" then
-                    local version = tag:gsub("^v", "")
-                    if not seen[version] then
-                        table.insert(versions, version)
-                        seen[version] = true
-                    end
+    for _, release in ipairs(releases) do
+        if not release.draft and (include_prerelease or not release.prerelease) then
+            local tag = release.tag_name or ""
+            if tag ~= "" then
+                local version = tag:gsub("^v", "")
+                if not seen[version] then
+                    table.insert(versions, version)
+                    seen[version] = true
                 end
             end
         end
-
-        if #releases < per_page then
-            break
-        end
-
-        page = page + 1
     end
 
-    if #versions == 0 then
-        error("No versions found for " .. tool .. " in GitHub releases")
-    end
     table.sort(versions, stable_first_sort)
 
     return { versions = versions }
