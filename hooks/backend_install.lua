@@ -68,8 +68,8 @@ function PLUGIN:BackendInstall(ctx)
 
     local ls_cmd = strings.join({ "pulumi", "plugin", "ls", "--json" }, " ")
     local ls_result = cmd.exec(ls_cmd)
-    if result:match("error") or result:match("failed") then
-        error("Failed to list pulumi plugins: " .. result)
+    if ls_result:match("error") or ls_result:match("failed") then
+        error("Failed to list pulumi plugins: " .. ls_result)
     end
     local decoded = json.decode(ls_result)
 

@@ -2,9 +2,34 @@
   "$schema": "https://raw.githubusercontent.com/sumneko/vscode-lua/master/setting/schema.json",
   "runtime": {
     "version": "Lua 5.4",
-    "path": ["?.lua", "?/init.lua"]
+    "path": [
+      "?.lua",
+      "?/init.lua",
+      "lua_modules/share/lua/5.4/?.lua",
+      "lua_modules/share/lua/5.4/?/init.lua",
+      "lua_modules/lib/lua/5.4/?.so"
+    ]
   },
   "workspace": {
-    "library": ["./?.lua", "./lua/stubs"]
+    "library": [
+      "./?.lua",
+      "./lua/stubs",
+      "./lua_modules/share/lua/5.4",
+      "./lua_modules/lib/lua/5.4"
+    ]
+  },
+  "diagnostics": {
+    "globals": [
+      "after_each",
+      "after",
+      "before_each",
+      "before",
+      "describe",
+      "insulate",
+      "it",
+      "pending",
+      "setup",
+      "teardown"
+    ]
   }
 }

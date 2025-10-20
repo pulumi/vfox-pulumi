@@ -45,7 +45,6 @@ function PLUGIN:BackendListVersions(ctx)
 
     local full_repo = owner .. "/" .. repo
 
-    local tool_cfg = ctx.tool_config or {}
     local http = require("http")
     local json = require("json")
     local headers = { ["User-Agent"] = "mise-backend-pulumi" }
@@ -55,18 +54,13 @@ function PLUGIN:BackendListVersions(ctx)
         headers["Authorization"] = "Bearer " .. token
     end
 
-    local include_prerelease = tool_cfg.include_prerelease
-    if include_prerelease == nil and ctx.options then
-        include_prerelease = ctx.options.include_prerelease or ctx.options.prerelease
-    end
-    include_prerelease = include_prerelease == true
+    local include_prerelease = true
 
     local per_page = 100
     local versions = {}
     local seen = {}
 
-    local api_url =
-        string.format("https://api.github.com/repos/%s/releases?per_page=%d", full_repo, per_page)
+    local api_url = string.format("https://api.github.com/repos/%s/releases?per_page=%d", full_repo, per_page)
 
     local resp, err = http.get({
         url = api_url,
