@@ -9,10 +9,11 @@ description = {
     homepage = "https://github.com/pulumi/mise-backend-pulumi",
     license = "*** please specify a license ***",
 }
-dependencies = {}
-build_dependencies = {
+dependencies = {
     "luacheck",
+    "busted",
 }
+build_dependencies = {}
 build = {
     type = "builtin",
     modules = {
@@ -29,6 +30,4 @@ build = {
         ["stubs.vfox.strings"] = "lua/stubs/vfox/strings.lua",
     },
 }
-test_dependencies = {
-    "busted",
-}
+test_dependencies = {}
