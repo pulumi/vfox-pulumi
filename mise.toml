@@ -28,3 +28,6 @@ run = "busted -v"
 [tasks.ci]
 description = "Run all CI checks"
 depends = ["lint", "unit", "test"]
+
+[settings]
+experimental = true
