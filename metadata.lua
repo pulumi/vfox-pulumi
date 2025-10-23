@@ -4,7 +4,7 @@
 
 PLUGIN = { -- luacheck: ignore
     -- Required: Plugin name (will be the backend name users reference)
-    name = "pulumi-mise",
+    name = "vfox-pulumi",
 
     -- Required: Plugin version (not the tool versions)
     version = "0.0.1",
@@ -16,7 +16,7 @@ PLUGIN = { -- luacheck: ignore
     author = "pulumi",
 
     -- Optional: Plugin homepage/repository URL
-    homepage = "https://github.com/pulumi/mise-backend-pulumi",
+    homepage = "https://github.com/pulumi/vfox-pulumi",
 
     -- Optional: Plugin license
     license = "Apache",

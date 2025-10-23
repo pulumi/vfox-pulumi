@@ -1,12 +1,12 @@
 -- hooks/backend_install.lua
 -- Installs a specific version of a tool
 -- Documentation: https://mise.jdx.dev/backend-plugin-development.html#backendinstall
-local file = require("file")
-local strings = require("strings")
-local json = require("json")
-local cmd = require("cmd")
-
 function PLUGIN:BackendInstall(ctx)
+    local file = require("file")
+    local strings = require("strings")
+    local json = require("json")
+    local cmd = require("cmd")
+
     local tool = ctx.tool
     local version = ctx.version
     local install_path = ctx.install_path

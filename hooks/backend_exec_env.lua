@@ -1,9 +1,9 @@
 -- hooks/backend_exec_env.lua
 -- Sets up environment variables for a tool
 -- Documentation: https://mise.jdx.dev/backend-plugin-development.html#backendexecenv
-local file = require("file")
 
 function PLUGIN:BackendExecEnv(ctx)
+    local file = require("file")
     local install_path = ctx.install_path
     local tool = ctx.tool
     local version = ctx.version

@@ -1,12 +1,12 @@
 rockspec_format = "3.0"
-package = "mise-backend-pulumi"
+package = "vfox-pulumi"
 version = "dev-1"
 source = {
-    url = "git+https://github.com/pulumi/mise-backend-pulumi.git",
+    url = "git+https://github.com/pulumi/vfox-pulumi.git",
 }
 description = {
-    detailed = "This is a GitHub template for building a mise backend plugin using the vfox-style backend architecture.",
-    homepage = "https://github.com/pulumi/mise-backend-pulumi",
+    detailed = "This is a mise backend plugin using the vfox-style backend architecture.",
+    homepage = "https://github.com/pulumi/vfox-pulumi",
     license = "*** please specify a license ***",
 }
 dependencies = {

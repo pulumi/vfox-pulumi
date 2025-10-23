@@ -2,9 +2,10 @@
 
 #MISE description="Run backend plugin tests - test plugin linking and basic functionality"
 set -euo pipefail
+TEST_PLUGIN_NAME="vfox-pulumi-local"
 
 # Link the plugin for testing
-mise plugin link --force pulumi-plugins .
+mise plugin link --force "$TEST_PLUGIN_NAME" .
 
 # Clear cache to ensure fresh testing
 mise cache clear
@@ -19,7 +20,7 @@ TEST_TOOL="pulumi/pulumi-local"
 TOOL_NAME="pulumi-resource-local"
 
 echo "Testing version listing for ${TEST_TOOL}..."
-if mise ls-remote pulumi-plugins:${TEST_TOOL} 2>/dev/null; then
+if mise ls-remote ${TEST_PLUGIN_NAME}:${TEST_TOOL} 2>/dev/null; then
     echo "✓ Version listing works"
 else
     echo "⚠ Version listing failed - implement backend_list_versions.lua for your backend"
@@ -27,11 +28,11 @@ fi
 
 # Test installation if versions are available
 echo "Testing installation..."
-if mise install pulumi-plugins:${TEST_TOOL}@latest 2>/dev/null; then
+if mise install ${TEST_PLUGIN_NAME}:${TEST_TOOL}@latest 2>/dev/null; then
     echo "✓ Installation works"
 
     # Test that the tool can be executed
-    if mise exec pulumi-plugins:${TEST_TOOL}@latest -- ${TOOL_NAME} --version 2>/dev/null; then
+    if mise exec ${TEST_PLUGIN_NAME}:${TEST_TOOL}@latest -- ${TOOL_NAME} --version 2>/dev/null; then
         echo "✓ Tool execution works"
     else
         echo "⚠ Tool execution failed - check backend_exec_env.lua implementation"
