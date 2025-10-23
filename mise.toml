@@ -11,7 +11,7 @@ pulumi = "latest"
 stylua = "latest"
 
 [hooks]
-postinstall = "luarocks install --only-deps mise-backend-pulumi-dev-1.rockspec"
+postinstall = "luarocks install --only-deps vfox-pulumi-dev-1.rockspec"
 
 [tasks.format]
 description = "Format Lua scripts"
