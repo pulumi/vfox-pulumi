@@ -27,6 +27,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - run: mkdir integration-cache
       - uses: jdx/mise-action@v3
         with:
           # just install mise and don't run `mise install`
@@ -54,6 +55,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - run: mkdir integration-cache
       - uses: jdx/mise-action@v3
         with:
           cache: false
