@@ -45,7 +45,7 @@ jobs:
           working_directory: integration-cache
           github_token: ${{ secrets.GITHUB_TOKEN }}
           experimental: true
-      - run: cd integration-cache && mise exec vfox-pulumi:pulumi/pulumi-local -- pulumi-resource-local --version
+      - run: cd integration-cache && pulumi-resource-local --version
 
 
   integration-cache:
@@ -74,7 +74,7 @@ jobs:
           working_directory: integration-cache
           github_token: ${{ secrets.GITHUB_TOKEN }}
           experimental: true
-      - run: cd integration-cache && mise exec vfox-pulumi:pulumi/pulumi-local -- pulumi-resource-local --version
+      - run: cd integration-cache && pulumi-resource-local --version
 
 
 
