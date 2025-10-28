@@ -30,8 +30,8 @@ jobs:
       - run: mkdir integration-cache
       - uses: jdx/mise-action@v3
         with:
-          # just install mise and don't run `mise install`
-          install: false
+          # Need to install mise and the repo tools
+          install: true
           cache: false
           cache_save: false
       - run: mise plugin link --force vfox-pulumi .
@@ -46,7 +46,7 @@ jobs:
           working_directory: integration-cache
           github_token: ${{ secrets.GITHUB_TOKEN }}
           experimental: true
-      - run: mise exec vfox-pulumi:pulumi/pulumi-local -- pulumi-resource-local --version
+      - run: cd integration_cache && mise exec vfox-pulumi:pulumi/pulumi-local -- pulumi-resource-local --version
 
 
   integration-cache:
@@ -60,10 +60,10 @@ jobs:
       - run: mkdir integration-cache
       - uses: jdx/mise-action@v3
         with:
+          # Need to install mise and the repo tools
+          install: true
           cache: false
           cache_save: false
-          # just install mise and don't run `mise install`
-          install: false
       - run: mise plugin link --force vfox-pulumi .
       - uses: jdx/mise-action@v3
         with:
@@ -76,7 +76,7 @@ jobs:
           working_directory: integration-cache
           github_token: ${{ secrets.GITHUB_TOKEN }}
           experimental: true
-      - run: mise exec vfox-pulumi:pulumi/pulumi-local -- pulumi-resource-local --version
+      - run: cd integration_cache && mise exec vfox-pulumi:pulumi/pulumi-local -- pulumi-resource-local --version
 
 
 
