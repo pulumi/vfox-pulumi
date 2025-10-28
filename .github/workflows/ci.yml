@@ -32,13 +32,12 @@ jobs:
         with:
           # Need to install mise and the repo tools
           install: true
-          cache: false
+          cache: true
           cache_save: false
       - run: mise plugin link --force vfox-pulumi .
       - uses: jdx/mise-action@v3
         with:
           cache: false
-          cache_save: true
           mise_toml: |
             [tools]
             "vfox-pulumi:pulumi/pulumi-local" = "latest"
@@ -62,12 +61,11 @@ jobs:
         with:
           # Need to install mise and the repo tools
           install: true
-          cache: false
+          cache: true
           cache_save: false
       - run: mise plugin link --force vfox-pulumi .
       - uses: jdx/mise-action@v3
         with:
-          cache_save: false
           cache: true
           mise_toml: |
             [tools]
