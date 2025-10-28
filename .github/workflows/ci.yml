@@ -19,3 +19,58 @@ jobs:
       - run: mise run ci
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  integration:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+        with:
+          # just install mise and don't run `mise install`
+          install: false
+          cache: false
+          cache_save: false
+      - uses: jdx/mise-action@v3
+        with:
+          cache: false
+          cache_save: true
+          mise_toml: |
+            [tools]
+            "vfox-pulumi:pulumi/pulumi-local" = "latest"
+            "vfox-pulumi:pulumi/pulumi-tls" = "latest"
+          working_directory: integration-cache
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - run: mise exec vfox-pulumi:pulumi/pulumi-local -- pulumi-resource-local --version
+
+
+  integration-cache:
+    needs: integration
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+        with:
+          cache: false
+          cache_save: false
+          # just install mise and don't run `mise install`
+          install: false
+      - uses: jdx/mise-action@v3
+        with:
+          cache_save: false
+          cache: true
+          mise_toml: |
+            [tools]
+            "vfox-pulumi:pulumi/pulumi-local" = "latest"
+            "vfox-pulumi:pulumi/pulumi-tls" = "latest"
+          working_directory: integration-cache
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - run: mise exec vfox-pulumi:pulumi/pulumi-local -- pulumi-resource-local --version
+
+
+
