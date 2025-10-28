@@ -1,6 +1,5 @@
 local cmd_exec_calls
 local cmd_exec_results
-local symlink_calls
 local decoded_payload
 local original_getenv = os.getenv
 local getenv_stub
@@ -16,7 +15,6 @@ describe("backend_install", function()
     before_each(function()
         cmd_exec_calls = {}
         cmd_exec_results = {}
-        symlink_calls = {}
         decoded_payload = {}
         env_values = {}
 
@@ -28,9 +26,6 @@ describe("backend_install", function()
         package.loaded.file = {
             join_path = function(...)
                 return table.concat({ ... }, "/")
-            end,
-            symlink = function(source, dest)
-                table.insert(symlink_calls, { source = source, dest = dest })
             end,
         }
 
@@ -119,7 +114,7 @@ describe("backend_install", function()
             { kind = "resource", name = "snowflake", version = "0.1.0" },
         }
 
-        cmd_exec_results = { "", "", "[]" }
+        cmd_exec_results = { "", "", "[]", "" }
 
         local result = run({
             tool = "pulumi/pulumi-snowflake",
@@ -129,14 +124,11 @@ describe("backend_install", function()
 
         assert.same({}, result)
         assert.same({
-            "mkdir -p /tmp/install",
+            "mkdir -p /tmp/install/bin",
             "pulumi plugin install resource snowflake 0.1.0",
             "pulumi plugin ls --json",
+            "cp -r /home/test/.pulumi/plugins/resource-snowflake-v0.1.0/* /tmp/install/bin",
         }, cmd_exec_calls)
-
-        assert.same(1, #symlink_calls)
-        assert.same("/home/test/.pulumi/plugins/resource-snowflake-v0.1.0", symlink_calls[1].source)
-        assert.same("/tmp/install/bin", symlink_calls[1].dest)
     end)
 
     it("installs tool plugins when repo uses pulumi-tool prefix", function()
@@ -146,7 +138,7 @@ describe("backend_install", function()
             { kind = "tool", name = "npm", version = "1.2.3" },
         }
 
-        cmd_exec_results = { "", "", "[]" }
+        cmd_exec_results = { "", "", "[]", "" }
 
         local result = run({
             tool = "pulumi/pulumi-tool-npm",
@@ -156,7 +148,7 @@ describe("backend_install", function()
 
         assert.same({}, result)
         assert.same("pulumi plugin install tool npm 1.2.3", cmd_exec_calls[2])
-        assert.same("/custom/pulumi/plugins/tool-npm-v1.2.3", symlink_calls[1].source)
+        assert.same("cp -r /custom/pulumi/plugins/tool-npm-v1.2.3/* /tmp/install/bin", cmd_exec_calls[4])
     end)
 
     it("installs converter plugins when repo uses pulumi-converter prefix", function()
@@ -166,7 +158,7 @@ describe("backend_install", function()
             { kind = "converter", name = "python", version = "0.9.0" },
         }
 
-        cmd_exec_results = { "", "", "[]" }
+        cmd_exec_results = { "", "", "[]", "" }
 
         local result = run({
             tool = "pulumi/pulumi-converter-python",
@@ -176,7 +168,7 @@ describe("backend_install", function()
 
         assert.same({}, result)
         assert.same("pulumi plugin install converter python 0.9.0", cmd_exec_calls[2])
-        assert.same("/custom/pulumi/plugins/converter-python-v0.9.0", symlink_calls[1].source)
+        assert.same("cp -r /custom/pulumi/plugins/converter-python-v0.9.0/* /tmp/install/bin", cmd_exec_calls[4])
     end)
 
     it("raises when installation command reports an error", function()
@@ -225,5 +217,21 @@ describe("backend_install", function()
                 install_path = "/tmp/install",
             })
         end, "Could not find installed tool: pulumi/pulumi-snowflake in PULUMI_HOME: /pulumi")
+    end)
+
+    it("raises when cp command reports an error", function()
+        env_values.PULUMI_HOME = "/pulumi"
+        decoded_payload = {
+            { kind = "resource", name = "snowflake", version = "0.1.0" },
+        }
+        cmd_exec_results = { "", "", "[]", "failed to cp" }
+
+        assert.has_error(function()
+            run({
+                tool = "pulumi/pulumi-snowflake",
+                version = "0.1.0",
+                install_path = "/tmp/install",
+            })
+        end, "Failed to cp plugin to mise location: failed to cp")
     end)
 end)
