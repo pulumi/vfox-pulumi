@@ -40,8 +40,9 @@ function PLUGIN:BackendInstall(ctx)
         package_name = repo:gsub("^pulumi%-", "")
     end
 
+    local final_install_path = file.join_path(install_path, "bin")
     -- Create installation directory
-    cmd.exec("mkdir -p " .. install_path)
+    cmd.exec("mkdir -p " .. final_install_path)
 
     local install_cmd = strings.join({ "pulumi", "plugin", "install", type, package_name, version }, " ")
     local result = cmd.exec(install_cmd)
@@ -86,11 +87,16 @@ function PLUGIN:BackendInstall(ctx)
     end
 
     local plugin_path = file.join_path(pulumi_home, "plugins", plugin_name)
-    local final_install_path = file.join_path(install_path, "bin")
 
-    -- symlink the plugin installed by pulumi to the mise install path
+    -- cp the plugin installed by pulumi to the mise install path
+    -- mise _requires_ that the plugin be installed at the mise install path. It looks for tools
+    -- at this location in order to determine if a tool is installed. Mise does not consult plugins to determine
+    -- installation status or location
     -- e.g. ~/.local/share/mise/installs/pulumi-plugins-pulumi-pulumi-local/0.1.6/bin
-    file.symlink(plugin_path, final_install_path)
+    local cp_result = cmd.exec(strings.join({ "cp", "-r", plugin_path .. "/*", final_install_path }, " "))
+    if cp_result:match("error") or cp_result:match("failed") then
+        error("Failed to cp plugin to mise location: " .. cp_result)
+    end
 
     return {}
 end
