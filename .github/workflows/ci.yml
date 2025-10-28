@@ -45,6 +45,7 @@ jobs:
             "vfox-pulumi:pulumi/pulumi-tls" = "latest"
           working_directory: integration-cache
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          experimental: true
       - run: mise exec vfox-pulumi:pulumi/pulumi-local -- pulumi-resource-local --version
 
 
@@ -74,6 +75,7 @@ jobs:
             "vfox-pulumi:pulumi/pulumi-tls" = "latest"
           working_directory: integration-cache
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          experimental: true
       - run: mise exec vfox-pulumi:pulumi/pulumi-local -- pulumi-resource-local --version
 
 
