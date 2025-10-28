@@ -34,6 +34,7 @@ jobs:
           install: false
           cache: false
           cache_save: false
+      - run: mise plugin link --force vfox-pulumi .
       - uses: jdx/mise-action@v3
         with:
           cache: false
@@ -62,6 +63,7 @@ jobs:
           cache_save: false
           # just install mise and don't run `mise install`
           install: false
+      - run: mise plugin link --force vfox-pulumi .
       - uses: jdx/mise-action@v3
         with:
           cache_save: false
