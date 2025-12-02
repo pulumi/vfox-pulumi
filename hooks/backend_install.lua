@@ -44,7 +44,13 @@ function PLUGIN:BackendInstall(ctx)
     -- Create installation directory
     cmd.exec("mkdir -p " .. final_install_path)
 
-    local install_cmd = strings.join({ "pulumi", "plugin", "install", type, package_name, version }, " ")
+    -- For third-party plugins (not from pulumi org), add --server flag
+    local install_cmd_parts = { "pulumi", "plugin", "install", type, package_name, version }
+    if owner ~= "pulumi" then
+        table.insert(install_cmd_parts, "--server")
+        table.insert(install_cmd_parts, "github://api.github.com/" .. owner)
+    end
+    local install_cmd = strings.join(install_cmd_parts, " ")
     local result = cmd.exec(install_cmd)
     if result:match("error") or result:match("failed") then
         error(
