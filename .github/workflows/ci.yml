@@ -15,7 +15,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - id: esc-secrets
+        uses: pulumi/esc-action@6cf9520e68354d86f81c455e8d43eabd58f5c9f5 # v1
       - uses: jdx/mise-action@v3
+        with:
+          github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
       - run: mise run ci
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -27,6 +31,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - id: esc-secrets
+        uses: pulumi/esc-action@6cf9520e68354d86f81c455e8d43eabd58f5c9f5 # v1
       - run: mkdir integration-cache
       - uses: jdx/mise-action@v3
         with:
@@ -34,16 +40,18 @@ jobs:
           install: true
           cache: true
           cache_save: false
+          github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
       - run: mise plugin link --force vfox-pulumi .
       - uses: jdx/mise-action@v3
         with:
           cache: false
           mise_toml: |
             [tools]
-            "vfox-pulumi:pulumi/pulumi-local" = "latest"
+            "vfox-pulumi:pulumi/pulumi-local" = "0.1.6"
             "vfox-pulumi:pulumi/pulumi-tls" = "latest"
+            "vfox-pulumi:equinix/pulumi-equinix" = "0.6.0"
           working_directory: integration-cache
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
           experimental: true
       - run: cd integration-cache && pulumi-resource-local --version
 
@@ -56,6 +64,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - id: esc-secrets
+        uses: pulumi/esc-action@6cf9520e68354d86f81c455e8d43eabd58f5c9f5 # v1
       - run: mkdir integration-cache
       - uses: jdx/mise-action@v3
         with:
@@ -69,10 +79,11 @@ jobs:
           cache: true
           mise_toml: |
             [tools]
-            "vfox-pulumi:pulumi/pulumi-local" = "latest"
+            "vfox-pulumi:pulumi/pulumi-local" = "0.1.6"
             "vfox-pulumi:pulumi/pulumi-tls" = "latest"
+            "vfox-pulumi:equinix/pulumi-equinix" = "0.6.0"
           working_directory: integration-cache
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
           experimental: true
       - run: cd integration-cache && pulumi-resource-local --version
 
