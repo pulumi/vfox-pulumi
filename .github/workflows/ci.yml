@@ -40,6 +40,7 @@ jobs:
           install: true
           cache: true
           cache_save: false
+          github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
       - run: mise plugin link --force vfox-pulumi .
       - uses: jdx/mise-action@v3
         with:
