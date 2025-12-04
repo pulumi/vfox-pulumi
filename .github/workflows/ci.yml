@@ -19,7 +19,7 @@ jobs:
         uses: pulumi/esc-action@b69006bca3bc6e514fb7e08d1593e8d9c49bd064
         with:
           environment: github-secrets/pulumi-vfox-pulumi
-          organization: pulumi
+          oidc-organization: pulumi
           oidc-auth: true
           oidc-requested-token-type: urn:pulumi:token-type:access_token:organization
       - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3
@@ -40,7 +40,7 @@ jobs:
         uses: pulumi/esc-action@b69006bca3bc6e514fb7e08d1593e8d9c49bd064
         with:
           environment: github-secrets/pulumi-vfox-pulumi
-          organization: pulumi
+          oidc-organization: pulumi
           oidc-auth: true
           oidc-requested-token-type: urn:pulumi:token-type:access_token:organization
       - run: mkdir integration-cache
@@ -65,7 +65,6 @@ jobs:
           experimental: true
       - run: cd integration-cache && pulumi-resource-local --version
 
-
   integration-cache:
     needs: integration
     strategy:
@@ -78,7 +77,7 @@ jobs:
         uses: pulumi/esc-action@b69006bca3bc6e514fb7e08d1593e8d9c49bd064
         with:
           environment: github-secrets/pulumi-vfox-pulumi
-          organization: pulumi
+          oidc-organization: pulumi
           oidc-auth: true
           oidc-requested-token-type: urn:pulumi:token-type:access_token:organization
       - run: mkdir integration-cache
