@@ -1,27 +1,40 @@
-local cmd_exec_calls
-local cmd_exec_results
+local http_get_calls
+local http_download_calls
+local http_responses
 local decoded_payload
 local original_getenv = os.getenv
+local original_remove = os.remove
 local getenv_stub
+local remove_stub
 local env_values
+local removed_files
 local original_modules = {}
+local archiver_calls
 
 describe("backend_install", function()
     local function load_subject()
         _G.PLUGIN = {}
+        _G.RUNTIME = {
+            osType = "darwin",
+            archType = "amd64",
+        }
         dofile("hooks/backend_install.lua")
     end
 
     before_each(function()
-        cmd_exec_calls = {}
-        cmd_exec_results = {}
+        http_get_calls = {}
+        http_download_calls = {}
+        http_responses = {}
         decoded_payload = {}
         env_values = {}
+        removed_files = {}
+        archiver_calls = {}
 
         original_modules.file = package.loaded.file
         original_modules.strings = package.loaded.strings
         original_modules.json = package.loaded.json
-        original_modules.cmd = package.loaded.cmd
+        original_modules.http = package.loaded.http
+        original_modules.archiver = package.loaded.archiver
 
         package.loaded.file = {
             join_path = function(...)
@@ -44,14 +57,28 @@ describe("backend_install", function()
             end,
         }
 
-        package.loaded.cmd = {
-            exec = function(command)
-                table.insert(cmd_exec_calls, command)
-                if #cmd_exec_results > 0 then
-                    local result = table.remove(cmd_exec_results, 1)
-                    return result
+        package.loaded.http = {
+            get = function(opts)
+                table.insert(http_get_calls, opts)
+                if #http_responses > 0 then
+                    local response = table.remove(http_responses, 1)
+                    return response
                 end
-                return ""
+                return { status_code = 200, body = "{}" }
+            end,
+            download = function(opts)
+                table.insert(http_download_calls, opts)
+                if #http_responses > 0 then
+                    local response = table.remove(http_responses, 1)
+                    return response
+                end
+                return { status_code = 200 }
+            end,
+        }
+
+        package.loaded.archiver = {
+            decompress_file = function(opts)
+                table.insert(archiver_calls, opts)
             end,
         }
 
@@ -62,19 +89,29 @@ describe("backend_install", function()
             return original_getenv(name)
         end)
 
+        remove_stub = stub(os, "remove", function(path)
+            table.insert(removed_files, path)
+        end)
+
         load_subject()
     end)
 
     after_each(function()
         _G.PLUGIN = nil
+        _G.RUNTIME = nil
 
         package.loaded.file = original_modules.file
         package.loaded.strings = original_modules.strings
         package.loaded.json = original_modules.json
-        package.loaded.cmd = original_modules.cmd
+        package.loaded.http = original_modules.http
+        package.loaded.archiver = original_modules.archiver
 
         if getenv_stub then
             getenv_stub:revert()
+        end
+
+        if remove_stub then
+            remove_stub:revert()
         end
     end)
 
@@ -106,15 +143,20 @@ describe("backend_install", function()
         end, "Tool pulumi must follow format owner/repo")
     end)
 
-    it("installs resource plugins using HOME fallback", function()
-        env_values.PULUMI_HOME = false
-        env_values.HOME = "/home/test"
-
+    it("installs resource plugins from GitHub", function()
         decoded_payload = {
-            { kind = "resource", name = "snowflake", version = "0.1.0" },
+            assets = {
+                {
+                    name = "pulumi-resource-snowflake-v0.1.0-darwin-amd64.tar.gz",
+                    url = "https://api.github.com/repos/pulumi/pulumi-snowflake/releases/assets/12345",
+                },
+            },
         }
 
-        cmd_exec_results = { "", "", "[]", "" }
+        http_responses = {
+            { status_code = 200, body = "" }, -- http.get response
+            { status_code = 200 }, -- http.download response
+        }
 
         local result = run({
             tool = "pulumi/pulumi-snowflake",
@@ -123,22 +165,38 @@ describe("backend_install", function()
         })
 
         assert.same({}, result)
-        assert.same({
-            "mkdir -p /tmp/install/bin",
-            "pulumi plugin install resource snowflake 0.1.0",
-            "pulumi plugin ls --json",
-            "cp -r /home/test/.pulumi/plugins/resource-snowflake-v0.1.0/* /tmp/install/bin",
-        }, cmd_exec_calls)
+        assert.equals(1, #http_get_calls)
+        assert.equals(
+            "https://api.github.com/repos/pulumi/pulumi-snowflake/releases/tags/v0.1.0",
+            http_get_calls[1].url
+        )
+        assert.equals(1, #http_download_calls)
+        assert.equals(
+            "https://api.github.com/repos/pulumi/pulumi-snowflake/releases/assets/12345",
+            http_download_calls[1].url
+        )
+        assert.equals("/tmp/install/plugin.tar.gz", http_download_calls[1].output)
+        assert.equals(1, #archiver_calls)
+        assert.equals("/tmp/install/plugin.tar.gz", archiver_calls[1].file_path)
+        assert.equals("/tmp/install/bin", archiver_calls[1].dst_dir)
+        assert.equals(1, #removed_files)
+        assert.equals("/tmp/install/plugin.tar.gz", removed_files[1])
     end)
 
     it("installs tool plugins when repo uses pulumi-tool prefix", function()
-        env_values.PULUMI_HOME = "/custom/pulumi"
-
         decoded_payload = {
-            { kind = "tool", name = "npm", version = "1.2.3" },
+            assets = {
+                {
+                    name = "pulumi-tool-npm-v1.2.3-darwin-amd64.tar.gz",
+                    url = "https://api.github.com/repos/pulumi/pulumi-tool-npm/releases/assets/12345",
+                },
+            },
         }
 
-        cmd_exec_results = { "", "", "[]", "" }
+        http_responses = {
+            { status_code = 200, body = "" },
+            { status_code = 200 },
+        }
 
         local result = run({
             tool = "pulumi/pulumi-tool-npm",
@@ -147,18 +205,23 @@ describe("backend_install", function()
         })
 
         assert.same({}, result)
-        assert.same("pulumi plugin install tool npm 1.2.3", cmd_exec_calls[2])
-        assert.same("cp -r /custom/pulumi/plugins/tool-npm-v1.2.3/* /tmp/install/bin", cmd_exec_calls[4])
+        assert.equals("https://api.github.com/repos/pulumi/pulumi-tool-npm/releases/tags/v1.2.3", http_get_calls[1].url)
     end)
 
     it("installs converter plugins when repo uses pulumi-converter prefix", function()
-        env_values.PULUMI_HOME = "/custom/pulumi"
-
         decoded_payload = {
-            { kind = "converter", name = "python", version = "0.9.0" },
+            assets = {
+                {
+                    name = "pulumi-converter-python-v0.9.0-darwin-amd64.tar.gz",
+                    url = "https://api.github.com/repos/pulumi/pulumi-converter-python/releases/assets/12345",
+                },
+            },
         }
 
-        cmd_exec_results = { "", "", "[]", "" }
+        http_responses = {
+            { status_code = 200, body = "" },
+            { status_code = 200 },
+        }
 
         local result = run({
             tool = "pulumi/pulumi-converter-python",
@@ -167,64 +230,128 @@ describe("backend_install", function()
         })
 
         assert.same({}, result)
-        assert.same("pulumi plugin install converter python 0.9.0", cmd_exec_calls[2])
-        assert.same("cp -r /custom/pulumi/plugins/converter-python-v0.9.0/* /tmp/install/bin", cmd_exec_calls[4])
-    end)
-
-    it("raises when installation command reports an error", function()
-        env_values.PULUMI_HOME = "/pulumi"
-        decoded_payload = {
-            { kind = "resource", name = "snowflake", version = "0.1.0" },
-        }
-        cmd_exec_results = { "", "error: install failed", "[]" }
-
-        assert.has_error(
-            function()
-                run({
-                    tool = "pulumi/pulumi-snowflake",
-                    version = "0.1.0",
-                    install_path = "/tmp/install",
-                })
-            end,
-            "Failed to install resource snowflake@0.1.0: error: install failed\n"
-                .. "pulumi plugin install resource snowflake 0.1.0"
+        assert.equals(
+            "https://api.github.com/repos/pulumi/pulumi-converter-python/releases/tags/v0.9.0",
+            http_get_calls[1].url
         )
     end)
 
-    it("raises when plugin list command fails", function()
-        env_values.PULUMI_HOME = "/pulumi"
-        decoded_payload = {}
-        cmd_exec_results = { "", "", "failed to list" }
-
-        assert.has_error(function()
-            run({
-                tool = "pulumi/pulumi-snowflake",
-                version = "0.1.0",
-                install_path = "/tmp/install",
-            })
-        end, "Failed to list pulumi plugins: failed to list")
-    end)
-
-    it("raises when plugin cannot be found after install", function()
-        env_values.PULUMI_HOME = "/pulumi"
-        decoded_payload = {}
-        cmd_exec_results = { "", "", "[]" }
-
-        assert.has_error(function()
-            run({
-                tool = "pulumi/pulumi-snowflake",
-                version = "0.1.0",
-                install_path = "/tmp/install",
-            })
-        end, "Could not find installed tool: pulumi/pulumi-snowflake in PULUMI_HOME: /pulumi")
-    end)
-
-    it("raises when cp command reports an error", function()
-        env_values.PULUMI_HOME = "/pulumi"
+    it("installs third-party plugins from GitHub", function()
         decoded_payload = {
-            { kind = "resource", name = "snowflake", version = "0.1.0" },
+            assets = {
+                {
+                    name = "pulumi-resource-equinix-v0.6.0-darwin-amd64.tar.gz",
+                    url = "https://api.github.com/repos/equinix/pulumi-equinix/releases/assets/12345",
+                },
+            },
         }
-        cmd_exec_results = { "", "", "[]", "failed to cp" }
+
+        http_responses = {
+            { status_code = 200, body = "" },
+            { status_code = 200 },
+        }
+
+        local result = run({
+            tool = "equinix/pulumi-equinix",
+            version = "0.6.0",
+            install_path = "/tmp/install",
+        })
+
+        assert.same({}, result)
+        assert.equals("https://api.github.com/repos/equinix/pulumi-equinix/releases/tags/v0.6.0", http_get_calls[1].url)
+    end)
+
+    it("uses GITHUB_TOKEN when available", function()
+        env_values.GITHUB_TOKEN = "ghp_test_token"
+
+        decoded_payload = {
+            assets = {
+                {
+                    name = "pulumi-resource-snowflake-v0.1.0-darwin-amd64.tar.gz",
+                    url = "https://api.github.com/repos/pulumi/pulumi-snowflake/releases/assets/12345",
+                },
+            },
+        }
+
+        http_responses = {
+            { status_code = 200, body = "" },
+            { status_code = 200 },
+        }
+
+        local result = run({
+            tool = "pulumi/pulumi-snowflake",
+            version = "0.1.0",
+            install_path = "/tmp/install",
+        })
+
+        assert.same({}, result)
+        assert.is_true(#http_get_calls[1].headers > 0)
+        assert.equals("Authorization: token ghp_test_token", http_get_calls[1].headers[1])
+        assert.is_true(#http_download_calls[1].headers > 0)
+        -- First header is Accept, second is Authorization
+        assert.equals("Authorization: token ghp_test_token", http_download_calls[1].headers[2])
+    end)
+
+    it("raises when GitHub API returns non-200", function()
+        http_responses = {
+            { status_code = 404, body = "" },
+        }
+
+        local success, err = pcall(function()
+            run({
+                tool = "pulumi/pulumi-snowflake",
+                version = "0.1.0",
+                install_path = "/tmp/install",
+            })
+        end)
+
+        assert.is_false(success)
+        assert.matches("Failed to fetch release info for pulumi/pulumi%-snowflake@0%.1%.0: HTTP 404", err)
+    end)
+
+    it("raises when asset cannot be found in release", function()
+        decoded_payload = {
+            assets = {
+                {
+                    name = "wrong-asset-name.tar.gz",
+                    url = "https://api.github.com/repos/pulumi/pulumi-snowflake/releases/assets/12345",
+                },
+            },
+        }
+
+        http_responses = {
+            { status_code = 200, body = "" },
+        }
+
+        local success, err = pcall(function()
+            run({
+                tool = "pulumi/pulumi-snowflake",
+                version = "0.1.0",
+                install_path = "/tmp/install",
+            })
+        end)
+
+        assert.is_false(success)
+        assert.matches(
+            "Could not find asset pulumi%-resource%-snowflake%-v0%.1%.0%-darwin%-amd64%.tar%.gz in release",
+            err
+        )
+    end)
+
+    it("raises when download fails", function()
+        decoded_payload = {
+            assets = {
+                {
+                    name = "pulumi-resource-snowflake-v0.1.0-darwin-amd64.tar.gz",
+                    url = "https://api.github.com/repos/pulumi/pulumi-snowflake/releases/assets/12345",
+                },
+            },
+        }
+
+        http_responses = {
+            { status_code = 200, body = "" },
+            { status_code = 500 },
+        }
 
         assert.has_error(function()
             run({
@@ -232,6 +359,6 @@ describe("backend_install", function()
                 version = "0.1.0",
                 install_path = "/tmp/install",
             })
-        end, "Failed to cp plugin to mise location: failed to cp")
+        end, "Failed to download plugin pulumi/pulumi-snowflake@0.1.0: HTTP 500")
     end)
 end)
