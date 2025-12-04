@@ -67,12 +67,11 @@ function PLUGIN:BackendInstall(ctx)
     -- For official pulumi plugins, try get.pulumi.com first
     if owner == "pulumi" then
         local get_pulumi_url = "https://get.pulumi.com/releases/plugins/" .. asset_name
-        download_response = http.download({
-            url = get_pulumi_url,
-            output = temp_file,
-        })
+        local success = pcall(function()
+            http.download_file({ url = get_pulumi_url }, temp_file)
+        end)
 
-        if download_response.status_code == 200 then
+        if success then
             download_succeeded = true
         end
     end
@@ -149,14 +148,15 @@ function PLUGIN:BackendInstall(ctx)
             table.insert(download_headers, "Authorization: token " .. github_token)
         end
 
-        download_response = http.download({
-            url = download_url,
-            output = temp_file,
-            headers = download_headers,
-        })
+        local success, err = pcall(function()
+            http.download_file({
+                url = download_url,
+                headers = download_headers,
+            }, temp_file)
+        end)
 
-        if download_response.status_code ~= 200 then
-            error("Failed to download plugin " .. tool .. "@" .. version .. ": HTTP " .. download_response.status_code)
+        if not success then
+            error("Failed to download plugin " .. tool .. "@" .. version .. ": " .. tostring(err))
         end
     end
 

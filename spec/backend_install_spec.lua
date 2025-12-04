@@ -66,13 +66,14 @@ describe("backend_install", function()
                 end
                 return { status_code = 200, body = "{}" }
             end,
-            download = function(opts)
-                table.insert(http_download_calls, opts)
+            download_file = function(opts, path)
+                table.insert(http_download_calls, { url = opts.url, output = path, headers = opts.headers })
                 if #http_responses > 0 then
                     local response = table.remove(http_responses, 1)
-                    return response
+                    if response.status_code ~= 200 then
+                        error("HTTP " .. response.status_code)
+                    end
                 end
-                return { status_code = 200 }
             end,
         }
 
@@ -325,13 +326,16 @@ describe("backend_install", function()
             { status_code = 500 }, -- GitHub download fails
         }
 
-        assert.has_error(function()
+        local success, err = pcall(function()
             run({
                 tool = "pulumi/pulumi-snowflake",
                 version = "0.1.0",
                 install_path = "/tmp/install",
             })
-        end, "Failed to download plugin pulumi/pulumi-snowflake@0.1.0: HTTP 500")
+        end)
+
+        assert.is_false(success)
+        assert.matches("Failed to download plugin pulumi/pulumi%-snowflake@0%.1%.0:.*HTTP 500", err)
     end)
 
     it("falls back to GitHub when get.pulumi.com is not available for pulumi org", function()
