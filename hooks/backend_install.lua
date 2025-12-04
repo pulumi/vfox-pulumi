@@ -64,19 +64,19 @@ function PLUGIN:BackendInstall(ctx)
     local download_response
     local download_succeeded = false
 
-    -- For official pulumi plugins, try get.pulumi.com first
+    -- For official pulumi plugins, check get.pulumi.com first with a HEAD request
     if owner == "pulumi" then
         local get_pulumi_url = "https://get.pulumi.com/releases/plugins/" .. asset_name
-        local success = pcall(function()
-            http.download_file({ url = get_pulumi_url }, temp_file)
-        end)
+        local head_response = http.head({ url = get_pulumi_url })
 
-        if success then
+        if head_response.status_code == 200 then
+            -- Available on get.pulumi.com, download it
+            http.download_file({ url = get_pulumi_url }, temp_file)
             download_succeeded = true
         end
     end
 
-    -- Fall back to GitHub if get.pulumi.com failed or if this is a third-party plugin
+    -- Fall back to GitHub if get.pulumi.com wasn't available or if this is a third-party plugin
     if not download_succeeded then
         -- Construct GitHub API URL to get release info
         local release_url = "https://api.github.com/repos/" .. owner .. "/" .. repo .. "/releases/tags/v" .. version
@@ -148,24 +148,15 @@ function PLUGIN:BackendInstall(ctx)
             table.insert(download_headers, "Authorization: token " .. github_token)
         end
 
-        local success, err = pcall(function()
-            http.download_file({
-                url = download_url,
-                headers = download_headers,
-            }, temp_file)
-        end)
-
-        if not success then
-            error("Failed to download plugin " .. tool .. "@" .. version .. ": " .. tostring(err))
-        end
+        http.download_file({
+            url = download_url,
+            headers = download_headers,
+        }, temp_file)
     end
 
     -- Extract the tarball to the install path
     local final_install_path = file.join_path(install_path, "bin")
-    archiver.decompress_file({
-        file_path = temp_file,
-        dst_dir = final_install_path,
-    })
+    archiver.decompress(temp_file, final_install_path)
 
     -- Clean up the temporary tarball
     os.remove(temp_file)

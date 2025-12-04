@@ -1,4 +1,5 @@
 local http_get_calls
+local http_head_calls
 local http_download_calls
 local http_responses
 local decoded_payload
@@ -23,6 +24,7 @@ describe("backend_install", function()
 
     before_each(function()
         http_get_calls = {}
+        http_head_calls = {}
         http_download_calls = {}
         http_responses = {}
         decoded_payload = {}
@@ -66,6 +68,14 @@ describe("backend_install", function()
                 end
                 return { status_code = 200, body = "{}" }
             end,
+            head = function(opts)
+                table.insert(http_head_calls, opts)
+                if #http_responses > 0 then
+                    local response = table.remove(http_responses, 1)
+                    return response
+                end
+                return { status_code = 404 } -- Default to not found
+            end,
             download_file = function(opts, path)
                 table.insert(http_download_calls, { url = opts.url, output = path, headers = opts.headers })
                 if #http_responses > 0 then
@@ -78,8 +88,8 @@ describe("backend_install", function()
         }
 
         package.loaded.archiver = {
-            decompress_file = function(opts)
-                table.insert(archiver_calls, opts)
+            decompress = function(archive_path, destination)
+                table.insert(archiver_calls, { file_path = archive_path, dst_dir = destination })
             end,
         }
 
@@ -146,7 +156,8 @@ describe("backend_install", function()
 
     it("installs official pulumi plugins from get.pulumi.com", function()
         http_responses = {
-            { status_code = 200 }, -- get.pulumi.com succeeds
+            { status_code = 200 }, -- HEAD request to get.pulumi.com returns 200
+            { status_code = 200 }, -- download from get.pulumi.com succeeds
         }
 
         local result = run({
@@ -156,6 +167,12 @@ describe("backend_install", function()
         })
 
         assert.same({}, result)
+        -- Should call HEAD request first
+        assert.equals(1, #http_head_calls)
+        assert.equals(
+            "https://get.pulumi.com/releases/plugins/pulumi-resource-snowflake-v0.1.0-darwin-amd64.tar.gz",
+            http_head_calls[1].url
+        )
         -- Should not call GitHub API
         assert.equals(0, #http_get_calls)
         assert.equals(1, #http_download_calls)
@@ -173,7 +190,8 @@ describe("backend_install", function()
 
     it("installs tool plugins when repo uses pulumi-tool prefix", function()
         http_responses = {
-            { status_code = 200 }, -- get.pulumi.com succeeds
+            { status_code = 200 }, -- HEAD request to get.pulumi.com returns 200
+            { status_code = 200 }, -- download succeeds
         }
 
         local result = run({
@@ -191,7 +209,8 @@ describe("backend_install", function()
 
     it("installs converter plugins when repo uses pulumi-converter prefix", function()
         http_responses = {
-            { status_code = 200 }, -- get.pulumi.com succeeds
+            { status_code = 200 }, -- HEAD request to get.pulumi.com returns 200
+            { status_code = 200 }, -- download succeeds
         }
 
         local result = run({
@@ -245,7 +264,7 @@ describe("backend_install", function()
         }
 
         http_responses = {
-            { status_code = 404 }, -- get.pulumi.com fails
+            { status_code = 404 }, -- HEAD to get.pulumi.com fails
             { status_code = 200, body = "" }, -- GitHub API succeeds
             { status_code = 200 }, -- GitHub download succeeds
         }
@@ -259,9 +278,9 @@ describe("backend_install", function()
         assert.same({}, result)
         assert.is_true(#http_get_calls[1].headers > 0)
         assert.equals("Authorization: token ghp_test_token", http_get_calls[1].headers[1])
-        assert.is_true(#http_download_calls[2].headers > 0)
+        assert.is_true(#http_download_calls[1].headers > 0)
         -- First header is Accept, second is Authorization
-        assert.equals("Authorization: token ghp_test_token", http_download_calls[2].headers[2])
+        assert.equals("Authorization: token ghp_test_token", http_download_calls[1].headers[2])
     end)
 
     it("raises when GitHub API returns non-200 for third-party plugin", function()
@@ -310,7 +329,7 @@ describe("backend_install", function()
         )
     end)
 
-    it("raises when both get.pulumi.com and GitHub downloads fail", function()
+    it("raises when both get.pulumi.com HEAD and GitHub downloads fail", function()
         decoded_payload = {
             assets = {
                 {
@@ -321,7 +340,7 @@ describe("backend_install", function()
         }
 
         http_responses = {
-            { status_code = 500 }, -- get.pulumi.com fails
+            { status_code = 404 }, -- HEAD to get.pulumi.com fails
             { status_code = 200, body = "" }, -- GitHub API succeeds
             { status_code = 500 }, -- GitHub download fails
         }
@@ -335,10 +354,10 @@ describe("backend_install", function()
         end)
 
         assert.is_false(success)
-        assert.matches("Failed to download plugin pulumi/pulumi%-snowflake@0%.1%.0:.*HTTP 500", err)
+        assert.matches("HTTP 500", err)
     end)
 
-    it("falls back to GitHub when get.pulumi.com is not available for pulumi org", function()
+    it("falls back to GitHub when get.pulumi.com HEAD returns non-200", function()
         decoded_payload = {
             assets = {
                 {
@@ -349,7 +368,7 @@ describe("backend_install", function()
         }
 
         http_responses = {
-            { status_code = 404 }, -- get.pulumi.com fails
+            { status_code = 404 }, -- HEAD to get.pulumi.com returns 404
             { status_code = 200, body = "" }, -- GitHub API succeeds
             { status_code = 200 }, -- GitHub download succeeds
         }
@@ -361,57 +380,22 @@ describe("backend_install", function()
         })
 
         assert.same({}, result)
-        -- First download attempt was get.pulumi.com
+        -- Should have made HEAD request
+        assert.equals(1, #http_head_calls)
         assert.equals(
             "https://get.pulumi.com/releases/plugins/pulumi-resource-snowflake-v0.1.0-darwin-amd64.tar.gz",
-            http_download_calls[1].url
+            http_head_calls[1].url
         )
-        -- Second download attempt was GitHub
+        -- Should fall back to GitHub
         assert.equals(1, #http_get_calls)
         assert.equals(
             "https://api.github.com/repos/pulumi/pulumi-snowflake/releases/tags/v0.1.0",
             http_get_calls[1].url
         )
-        assert.equals(2, #http_download_calls)
+        assert.equals(1, #http_download_calls)
         assert.equals(
             "https://api.github.com/repos/pulumi/pulumi-snowflake/releases/assets/12345",
-            http_download_calls[2].url
-        )
-    end)
-
-    it("falls back to GitHub when asset not found in get.pulumi.com for pulumi org", function()
-        decoded_payload = {
-            assets = {
-                {
-                    name = "pulumi-resource-snowflake-v0.1.0-darwin-amd64.tar.gz",
-                    url = "https://api.github.com/repos/pulumi/pulumi-snowflake/releases/assets/12345",
-                },
-            },
-        }
-
-        http_responses = {
-            { status_code = 500 }, -- get.pulumi.com fails with server error
-            { status_code = 200, body = "" }, -- GitHub API succeeds
-            { status_code = 200 }, -- GitHub download succeeds
-        }
-
-        local result = run({
-            tool = "pulumi/pulumi-snowflake",
-            version = "0.1.0",
-            install_path = "/tmp/install",
-        })
-
-        assert.same({}, result)
-        assert.equals(2, #http_download_calls)
-        -- First was get.pulumi.com
-        assert.equals(
-            "https://get.pulumi.com/releases/plugins/pulumi-resource-snowflake-v0.1.0-darwin-amd64.tar.gz",
             http_download_calls[1].url
-        )
-        -- Second was GitHub
-        assert.equals(
-            "https://api.github.com/repos/pulumi/pulumi-snowflake/releases/assets/12345",
-            http_download_calls[2].url
         )
     end)
 end)
