@@ -9,6 +9,9 @@ on:
 
 jobs:
   ci:
+    permissions:
+      contents: read
+      id-token: write # For ESC secrets.
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -30,6 +33,9 @@ jobs:
           GITHUB_TOKEN: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
 
   integration:
+    permissions:
+      contents: read
+      id-token: write # For ESC secrets.
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -67,6 +73,9 @@ jobs:
 
   integration-cache:
     needs: integration
+    permissions:
+      contents: read
+      id-token: write # For ESC secrets.
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
