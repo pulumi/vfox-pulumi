@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - id: esc-secrets
-        uses: pulumi/esc-action@6cf9520e68354d86f81c455e8d43eabd58f5c9f5 # v1
+        uses: pulumi/esc-action@b69006bca3bc6e514fb7e08d1593e8d9c49bd064
         with:
           environment: github-secrets/pulumi-vfox-pulumi
           organization: pulumi
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - id: esc-secrets
-        uses: pulumi/esc-action@6cf9520e68354d86f81c455e8d43eabd58f5c9f5 # v1
+        uses: pulumi/esc-action@b69006bca3bc6e514fb7e08d1593e8d9c49bd064
         with:
           environment: github-secrets/pulumi-vfox-pulumi
           organization: pulumi
@@ -75,7 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - id: esc-secrets
-        uses: pulumi/esc-action@6cf9520e68354d86f81c455e8d43eabd58f5c9f5 # v1
+        uses: pulumi/esc-action@b69006bca3bc6e514fb7e08d1593e8d9c49bd064
         with:
           environment: github-secrets/pulumi-vfox-pulumi
           organization: pulumi
