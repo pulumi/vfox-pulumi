@@ -79,7 +79,7 @@ function PLUGIN:BackendInstall(ctx)
         local headers = {}
         local token = os.getenv("MISE_GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN")
         if token and token ~= "" then
-            table.insert(headers, "Authorization: token " .. token)
+            headers["Authorization"] = "token " .. token
         end
 
         -- Fetch release information from GitHub
@@ -136,10 +136,12 @@ function PLUGIN:BackendInstall(ctx)
             )
         end
 
-        -- Download from GitHub
-        local download_headers = { "Accept: application/octet-stream" }
+        -- Download from GitHub using asset API URL (supports private repos with auth)
+        local download_headers = {
+            ["Accept"] = "application/octet-stream",
+        }
         if token and token ~= "" then
-            table.insert(download_headers, "Authorization: token " .. token)
+            download_headers["Authorization"] = "token " .. token
         end
 
         http.download_file({

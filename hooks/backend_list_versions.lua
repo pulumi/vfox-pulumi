@@ -74,7 +74,31 @@ function PLUGIN:BackendListVersions(ctx)
     end
 
     if resp.status_code ~= 200 then
-        error(("GitHub API returned status %d for %s"):format(resp.status_code, full_repo))
+        local error_msg = ("GitHub API returned status %d for %s"):format(resp.status_code, full_repo)
+
+        -- If rate limited (403), check for reset time
+        if resp.status_code == 403 and resp.headers then
+            local reset_time = resp.headers["x-ratelimit-reset"]
+            local remaining = resp.headers["x-ratelimit-remaining"]
+
+            if reset_time then
+                local current_time = os.time()
+                local wait_seconds = tonumber(reset_time) - current_time
+                if wait_seconds > 0 then
+                    local minutes = math.floor(wait_seconds / 60)
+                    error_msg = error_msg
+                        .. ("\nRate limit exceeded. Retry after %d minutes (%d seconds)"):format(minutes, wait_seconds)
+                else
+                    error_msg = error_msg .. "\nRate limit exceeded. You can retry now."
+                end
+            end
+
+            if remaining then
+                error_msg = error_msg .. ("\nRemaining requests: %s"):format(remaining)
+            end
+        end
+
+        error(error_msg)
     end
 
     local releases = json.decode(resp.body)
