@@ -109,6 +109,8 @@ describe("backend_install", function()
     it("installs resource plugins using HOME fallback", function()
         env_values.PULUMI_HOME = false
         env_values.HOME = "/home/test"
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
 
         decoded_payload = {
             { kind = "resource", name = "snowflake", version = "0.1.0" },
@@ -133,6 +135,8 @@ describe("backend_install", function()
 
     it("installs tool plugins when repo uses pulumi-tool prefix", function()
         env_values.PULUMI_HOME = "/custom/pulumi"
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
 
         decoded_payload = {
             { kind = "tool", name = "npm", version = "1.2.3" },
@@ -153,6 +157,8 @@ describe("backend_install", function()
 
     it("installs converter plugins when repo uses pulumi-converter prefix", function()
         env_values.PULUMI_HOME = "/custom/pulumi"
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
 
         decoded_payload = {
             { kind = "converter", name = "python", version = "0.9.0" },
@@ -173,6 +179,8 @@ describe("backend_install", function()
 
     it("raises when installation command reports an error", function()
         env_values.PULUMI_HOME = "/pulumi"
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
         decoded_payload = {
             { kind = "resource", name = "snowflake", version = "0.1.0" },
         }
@@ -193,6 +201,8 @@ describe("backend_install", function()
 
     it("raises when plugin list command fails", function()
         env_values.PULUMI_HOME = "/pulumi"
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
         decoded_payload = {}
         cmd_exec_results = { "", "", "failed to list" }
 
@@ -207,6 +217,8 @@ describe("backend_install", function()
 
     it("raises when plugin cannot be found after install", function()
         env_values.PULUMI_HOME = "/pulumi"
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
         decoded_payload = {}
         cmd_exec_results = { "", "", "[]" }
 
@@ -221,6 +233,8 @@ describe("backend_install", function()
 
     it("raises when cp command reports an error", function()
         env_values.PULUMI_HOME = "/pulumi"
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
         decoded_payload = {
             { kind = "resource", name = "snowflake", version = "0.1.0" },
         }
@@ -233,5 +247,59 @@ describe("backend_install", function()
                 install_path = "/tmp/install",
             })
         end, "Failed to cp plugin to mise location: failed to cp")
+    end)
+
+    it("uses MISE_GITHUB_TOKEN when set", function()
+        env_values.PULUMI_HOME = "/pulumi"
+        env_values.HOME = "/home/test"
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = "ghp_mise_token_123"
+
+        decoded_payload = {
+            { kind = "resource", name = "snowflake", version = "0.1.0" },
+        }
+
+        cmd_exec_results = { "", "", "[]", "" }
+
+        local result = run({
+            tool = "pulumi/pulumi-snowflake",
+            version = "0.1.0",
+            install_path = "/tmp/install",
+        })
+
+        assert.same({}, result)
+        assert.same({
+            "mkdir -p /tmp/install/bin",
+            "GITHUB_TOKEN=ghp_mise_token_123 pulumi plugin install resource snowflake 0.1.0",
+            "pulumi plugin ls --json",
+            "cp -r /pulumi/plugins/resource-snowflake-v0.1.0/* /tmp/install/bin",
+        }, cmd_exec_calls)
+    end)
+
+    it("prefers MISE_GITHUB_TOKEN over GITHUB_TOKEN when both are set", function()
+        env_values.PULUMI_HOME = "/pulumi"
+        env_values.HOME = "/home/test"
+        env_values.GITHUB_TOKEN = "ghp_token_ignored"
+        env_values.MISE_GITHUB_TOKEN = "ghp_mise_token_456"
+
+        decoded_payload = {
+            { kind = "resource", name = "snowflake", version = "0.1.0" },
+        }
+
+        cmd_exec_results = { "", "", "[]", "" }
+
+        local result = run({
+            tool = "pulumi/pulumi-snowflake",
+            version = "0.1.0",
+            install_path = "/tmp/install",
+        })
+
+        assert.same({}, result)
+        assert.same({
+            "mkdir -p /tmp/install/bin",
+            "GITHUB_TOKEN=ghp_mise_token_456 pulumi plugin install resource snowflake 0.1.0",
+            "pulumi plugin ls --json",
+            "cp -r /pulumi/plugins/resource-snowflake-v0.1.0/* /tmp/install/bin",
+        }, cmd_exec_calls)
     end)
 end)
