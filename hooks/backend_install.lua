@@ -5,7 +5,8 @@ function PLUGIN:BackendInstall(ctx)
     local file = require("file")
     local strings = require("strings")
     local json = require("json")
-    local cmd = require("cmd")
+    local http = require("http")
+    local archiver = require("archiver")
 
     local tool = ctx.tool
     local version = ctx.version
@@ -27,92 +28,134 @@ function PLUGIN:BackendInstall(ctx)
         error("Tool " .. tool .. " must follow format owner/repo")
     end
 
-    local type
-    local package_name
-    if strings.has_prefix(repo, "pulumi-converter") then
-        type = "converter"
-        package_name = repo:gsub("^pulumi%-converter%-", "")
-    elseif strings.has_prefix(repo, "pulumi-tool") then
-        type = "tool"
-        package_name = repo:gsub("^pulumi%-tool%-", "")
-    else
-        type = "resource"
-        package_name = repo:gsub("^pulumi%-", "")
-    end
-
-    local final_install_path = file.join_path(install_path, "bin")
-    -- Create installation directory
-    cmd.exec("mkdir -p " .. final_install_path)
-
-    -- If MISE_GITHUB_TOKEN is set, export it as GITHUB_TOKEN for the pulumi CLI
-    -- If GITHUB_TOKEN is already set, it will be inherited automatically
-    local mise_github_token = os.getenv("MISE_GITHUB_TOKEN")
-    local token_prefix = ""
-
-    if mise_github_token and mise_github_token ~= "" then
-        -- MISE_GITHUB_TOKEN takes precedence - set it as GITHUB_TOKEN for pulumi CLI
-        token_prefix = "GITHUB_TOKEN=" .. mise_github_token .. " "
-    end
-
-    -- For third-party plugins (not from pulumi org), add --server flag
-    local install_cmd_parts = { token_prefix .. "pulumi", "plugin", "install", type, package_name, version }
-    if owner ~= "pulumi" then
-        table.insert(install_cmd_parts, "--server")
-        table.insert(install_cmd_parts, "github://api.github.com/" .. owner)
-    end
-    local install_cmd = strings.join(install_cmd_parts, " ")
-    local result = cmd.exec(install_cmd)
-    if result:match("error") or result:match("failed") then
-        error(
-            "Failed to install "
-                .. type
-                .. " "
-                .. package_name
-                .. "@"
-                .. version
-                .. ": "
-                .. result
-                .. "\n"
-                .. install_cmd
-        )
-    end
-
-    local pulumi_home = os.getenv("PULUMI_HOME")
-    local home = os.getenv("HOME")
-    if not pulumi_home or pulumi_home == "" then
-        pulumi_home = file.join_path(home, ".pulumi")
-    end
-
-    local ls_cmd = strings.join({ "pulumi", "plugin", "ls", "--json" }, " ")
-    local ls_result = cmd.exec(ls_cmd)
-    if ls_result:match("error") or ls_result:match("failed") then
-        error("Failed to list pulumi plugins: " .. ls_result)
-    end
-    local decoded = json.decode(ls_result)
-
-    -- generate the plugin name as it exists on the filesystem, e.g. resource-local-v0.0.1
+    local plugin_kind
     local plugin_name
-    for _, plugin in ipairs(decoded) do
-        if plugin.name == package_name and plugin.version == version then
-            plugin_name = strings.join({ plugin.kind, plugin.name, "v" .. version }, "-")
+    if strings.has_prefix(repo, "pulumi-converter") then
+        plugin_kind = "converter"
+        plugin_name = repo:gsub("^pulumi%-converter%-", "")
+    elseif strings.has_prefix(repo, "pulumi-tool") then
+        plugin_kind = "tool"
+        plugin_name = repo:gsub("^pulumi%-tool%-", "")
+    else
+        plugin_kind = "resource"
+        plugin_name = repo:gsub("^pulumi%-", "")
+    end
+
+    -- Determine OS and architecture
+    -- RUNTIME.osType returns "Darwin", "Linux", or "Windows" (capitalized)
+    -- Pulumi expects lowercase: "darwin", "linux", "windows"
+    local os_type = RUNTIME.osType:lower()
+    local arch_type = RUNTIME.archType:lower()
+
+    -- Construct the expected asset name
+    -- Format: pulumi-{kind}-{name}-v{version}-{os}-{arch}.tar.gz
+    local asset_name = strings.join({ "pulumi", plugin_kind, plugin_name, "v" .. version, os_type, arch_type }, "-")
+        .. ".tar.gz"
+
+    -- Download the plugin tarball
+    local temp_file = file.join_path(install_path, "plugin.tar.gz")
+    local download_response
+    local download_succeeded = false
+
+    -- For official pulumi plugins, check get.pulumi.com first with a HEAD request
+    if owner == "pulumi" then
+        local get_pulumi_url = "https://get.pulumi.com/releases/plugins/" .. asset_name
+        local head_response = http.head({ url = get_pulumi_url })
+
+        if head_response.status_code == 200 then
+            -- Available on get.pulumi.com, download it
+            http.download_file({ url = get_pulumi_url }, temp_file)
+            download_succeeded = true
         end
     end
 
-    if not plugin_name or plugin_name == "" then
-        error("Could not find installed tool: " .. tool .. " in PULUMI_HOME: " .. pulumi_home)
+    -- Fall back to GitHub if get.pulumi.com wasn't available or if this is a third-party plugin
+    if not download_succeeded then
+        -- Construct GitHub API URL to get release info
+        local release_url = "https://api.github.com/repos/" .. owner .. "/" .. repo .. "/releases/tags/v" .. version
+
+        -- Add GitHub token if available for authentication
+        -- MISE_GITHUB_TOKEN takes precedence if both are set
+        local headers = {}
+        local token = os.getenv("MISE_GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN")
+        if token and token ~= "" then
+            headers["Authorization"] = "token " .. token
+        end
+
+        -- Fetch release information from GitHub
+        local release_response = http.get({
+            url = release_url,
+            headers = headers,
+        })
+
+        if release_response.status_code ~= 200 then
+            error(
+                "Failed to fetch release info for "
+                    .. tool
+                    .. "@"
+                    .. version
+                    .. ": HTTP "
+                    .. release_response.status_code
+                    .. "\nURL: "
+                    .. release_url
+            )
+        end
+
+        local release_data = json.decode(release_response.body)
+
+        -- Find the matching asset
+        local download_url
+        if release_data.assets then
+            for _, asset in ipairs(release_data.assets) do
+                if asset.name == asset_name then
+                    download_url = asset.url
+                    break
+                end
+            end
+        end
+
+        if not download_url or download_url == "" then
+            error(
+                "Could not find asset "
+                    .. asset_name
+                    .. " in release "
+                    .. tool
+                    .. "@"
+                    .. version
+                    .. "\nAvailable assets: "
+                    .. (function()
+                        if not release_data.assets then
+                            return "none"
+                        end
+                        local names = {}
+                        for _, asset in ipairs(release_data.assets) do
+                            table.insert(names, asset.name)
+                        end
+                        return strings.join(names, ", ")
+                    end)()
+            )
+        end
+
+        -- Download from GitHub using asset API URL (supports private repos with auth)
+        local download_headers = {
+            ["Accept"] = "application/octet-stream",
+        }
+        if token and token ~= "" then
+            download_headers["Authorization"] = "token " .. token
+        end
+
+        http.download_file({
+            url = download_url,
+            headers = download_headers,
+        }, temp_file)
     end
 
-    local plugin_path = file.join_path(pulumi_home, "plugins", plugin_name)
+    -- Extract the tarball to the install path
+    local final_install_path = file.join_path(install_path, "bin")
+    archiver.decompress(temp_file, final_install_path)
 
-    -- cp the plugin installed by pulumi to the mise install path
-    -- mise _requires_ that the plugin be installed at the mise install path. It looks for tools
-    -- at this location in order to determine if a tool is installed. Mise does not consult plugins to determine
-    -- installation status or location
-    -- e.g. ~/.local/share/mise/installs/pulumi-plugins-pulumi-pulumi-local/0.1.6/bin
-    local cp_result = cmd.exec(strings.join({ "cp", "-r", plugin_path .. "/*", final_install_path }, " "))
-    if cp_result:match("error") or cp_result:match("failed") then
-        error("Failed to cp plugin to mise location: " .. cp_result)
-    end
+    -- Clean up the temporary tarball
+    os.remove(temp_file)
 
     return {}
 end
