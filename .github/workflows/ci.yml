@@ -17,6 +17,11 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - id: esc-secrets
         uses: pulumi/esc-action@6cf9520e68354d86f81c455e8d43eabd58f5c9f5 # v1
+        with:
+          environment: github-secrets/pulumi-vfox-pulumi
+          organization: pulumi
+          oidc-auth: true
+          oidc-requested-token-type: urn:pulumi:token-type:access_token:organization
       - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3
         with:
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
@@ -33,6 +38,11 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - id: esc-secrets
         uses: pulumi/esc-action@6cf9520e68354d86f81c455e8d43eabd58f5c9f5 # v1
+        with:
+          environment: github-secrets/pulumi-vfox-pulumi
+          organization: pulumi
+          oidc-auth: true
+          oidc-requested-token-type: urn:pulumi:token-type:access_token:organization
       - run: mkdir integration-cache
       - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3
         with:
@@ -66,6 +76,11 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - id: esc-secrets
         uses: pulumi/esc-action@6cf9520e68354d86f81c455e8d43eabd58f5c9f5 # v1
+        with:
+          environment: github-secrets/pulumi-vfox-pulumi
+          organization: pulumi
+          oidc-auth: true
+          oidc-requested-token-type: urn:pulumi:token-type:access_token:organization
       - run: mkdir integration-cache
       - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3
         with:
@@ -86,6 +101,3 @@ jobs:
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
           experimental: true
       - run: cd integration-cache && pulumi-resource-local --version
-
-
-
