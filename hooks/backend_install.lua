@@ -59,87 +59,105 @@ function PLUGIN:BackendInstall(ctx)
     local asset_name = strings.join({ "pulumi", plugin_kind, plugin_name, "v" .. version, os_type, arch_type }, "-")
         .. ".tar.gz"
 
-    -- Construct GitHub API URL to get release info
-    local release_url = "https://api.github.com/repos/" .. owner .. "/" .. repo .. "/releases/tags/v" .. version
+    -- Download the plugin tarball
+    local temp_file = file.join_path(install_path, "plugin.tar.gz")
+    local download_response
+    local download_succeeded = false
 
-    -- Add GitHub token if available for authentication
-    local headers = {}
-    local github_token = os.getenv("GITHUB_TOKEN")
-    if github_token and github_token ~= "" then
-        table.insert(headers, "Authorization: token " .. github_token)
-    end
+    -- For official pulumi plugins, try get.pulumi.com first
+    if owner == "pulumi" then
+        local get_pulumi_url = "https://get.pulumi.com/releases/plugins/" .. asset_name
+        download_response = http.download({
+            url = get_pulumi_url,
+            output = temp_file,
+        })
 
-    -- Fetch release information
-    local release_response = http.get({
-        url = release_url,
-        headers = headers,
-    })
-
-    if release_response.status_code ~= 200 then
-        error(
-            "Failed to fetch release info for "
-                .. tool
-                .. "@"
-                .. version
-                .. ": HTTP "
-                .. release_response.status_code
-                .. "\nURL: "
-                .. release_url
-        )
-    end
-
-    local release_data = json.decode(release_response.body)
-
-    -- Find the matching asset
-    local download_url
-    if release_data.assets then
-        for _, asset in ipairs(release_data.assets) do
-            if asset.name == asset_name then
-                download_url = asset.url
-                break
-            end
+        if download_response.status_code == 200 then
+            download_succeeded = true
         end
     end
 
-    if not download_url or download_url == "" then
-        error(
-            "Could not find asset "
-                .. asset_name
-                .. " in release "
-                .. tool
-                .. "@"
-                .. version
-                .. "\nAvailable assets: "
-                .. (function()
-                    if not release_data.assets then
-                        return "none"
-                    end
-                    local names = {}
-                    for _, asset in ipairs(release_data.assets) do
-                        table.insert(names, asset.name)
-                    end
-                    return strings.join(names, ", ")
-                end)()
-        )
-    end
+    -- Fall back to GitHub if get.pulumi.com failed or if this is a third-party plugin
+    if not download_succeeded then
+        -- Construct GitHub API URL to get release info
+        local release_url = "https://api.github.com/repos/" .. owner .. "/" .. repo .. "/releases/tags/v" .. version
 
-    -- Download the plugin tarball
-    local temp_file = file.join_path(install_path, "plugin.tar.gz")
+        -- Add GitHub token if available for authentication
+        local headers = {}
+        local github_token = os.getenv("GITHUB_TOKEN")
+        if github_token and github_token ~= "" then
+            table.insert(headers, "Authorization: token " .. github_token)
+        end
 
-    -- Add Accept header for GitHub asset download
-    local download_headers = { "Accept: application/octet-stream" }
-    if github_token and github_token ~= "" then
-        table.insert(download_headers, "Authorization: token " .. github_token)
-    end
+        -- Fetch release information from GitHub
+        local release_response = http.get({
+            url = release_url,
+            headers = headers,
+        })
 
-    local download_response = http.download({
-        url = download_url,
-        output = temp_file,
-        headers = download_headers,
-    })
+        if release_response.status_code ~= 200 then
+            error(
+                "Failed to fetch release info for "
+                    .. tool
+                    .. "@"
+                    .. version
+                    .. ": HTTP "
+                    .. release_response.status_code
+                    .. "\nURL: "
+                    .. release_url
+            )
+        end
 
-    if download_response.status_code ~= 200 then
-        error("Failed to download plugin " .. tool .. "@" .. version .. ": HTTP " .. download_response.status_code)
+        local release_data = json.decode(release_response.body)
+
+        -- Find the matching asset
+        local download_url
+        if release_data.assets then
+            for _, asset in ipairs(release_data.assets) do
+                if asset.name == asset_name then
+                    download_url = asset.url
+                    break
+                end
+            end
+        end
+
+        if not download_url or download_url == "" then
+            error(
+                "Could not find asset "
+                    .. asset_name
+                    .. " in release "
+                    .. tool
+                    .. "@"
+                    .. version
+                    .. "\nAvailable assets: "
+                    .. (function()
+                        if not release_data.assets then
+                            return "none"
+                        end
+                        local names = {}
+                        for _, asset in ipairs(release_data.assets) do
+                            table.insert(names, asset.name)
+                        end
+                        return strings.join(names, ", ")
+                    end)()
+            )
+        end
+
+        -- Download from GitHub
+        local download_headers = { "Accept: application/octet-stream" }
+        if github_token and github_token ~= "" then
+            table.insert(download_headers, "Authorization: token " .. github_token)
+        end
+
+        download_response = http.download({
+            url = download_url,
+            output = temp_file,
+            headers = download_headers,
+        })
+
+        if download_response.status_code ~= 200 then
+            error("Failed to download plugin " .. tool .. "@" .. version .. ": HTTP " .. download_response.status_code)
+        end
     end
 
     -- Extract the tarball to the install path
