@@ -42,17 +42,10 @@ function PLUGIN:BackendInstall(ctx)
     end
 
     -- Determine OS and architecture
+    -- RUNTIME.osType returns "Darwin", "Linux", or "Windows" (capitalized)
+    -- Pulumi expects lowercase: "darwin", "linux", "windows"
     local os_type = RUNTIME.osType:lower()
     local arch_type = RUNTIME.archType:lower()
-
-    -- Map to Pulumi's naming conventions
-    if os_type == "darwin" then
-        os_type = "darwin"
-    elseif os_type == "linux" then
-        os_type = "linux"
-    elseif os_type == "windows" then
-        os_type = "windows"
-    end
 
     -- Construct the expected asset name
     -- Format: pulumi-{kind}-{name}-v{version}-{os}-{arch}.tar.gz
