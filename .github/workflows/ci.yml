@@ -22,7 +22,7 @@ jobs:
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
       - run: mise run ci
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
 
   integration:
     strategy:
