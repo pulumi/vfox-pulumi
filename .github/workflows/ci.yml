@@ -9,15 +9,23 @@ on:
 
 jobs:
   ci:
+    permissions:
+      contents: read
+      id-token: write # For ESC secrets.
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - id: esc-secrets
-        uses: pulumi/esc-action@6cf9520e68354d86f81c455e8d43eabd58f5c9f5 # v1
-      - uses: jdx/mise-action@v3
+        uses: pulumi/esc-action@b69006bca3bc6e514fb7e08d1593e8d9c49bd064
+        with:
+          environment: github-secrets/pulumi-vfox-pulumi
+          oidc-organization: pulumi
+          oidc-auth: true
+          oidc-requested-token-type: urn:pulumi:token-type:access_token:organization
+      - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3
         with:
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
       - run: mise run ci
@@ -25,16 +33,24 @@ jobs:
           GITHUB_TOKEN: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
 
   integration:
+    permissions:
+      contents: read
+      id-token: write # For ESC secrets.
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - id: esc-secrets
-        uses: pulumi/esc-action@6cf9520e68354d86f81c455e8d43eabd58f5c9f5 # v1
+        uses: pulumi/esc-action@b69006bca3bc6e514fb7e08d1593e8d9c49bd064
+        with:
+          environment: github-secrets/pulumi-vfox-pulumi
+          oidc-organization: pulumi
+          oidc-auth: true
+          oidc-requested-token-type: urn:pulumi:token-type:access_token:organization
       - run: mkdir integration-cache
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3
         with:
           # Need to install mise and the repo tools
           install: true
@@ -42,7 +58,7 @@ jobs:
           cache_save: false
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
       - run: mise plugin link --force vfox-pulumi .
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3
         with:
           cache: false
           mise_toml: |
@@ -55,26 +71,33 @@ jobs:
           experimental: true
       - run: cd integration-cache && pulumi-resource-local --version
 
-
   integration-cache:
     needs: integration
+    permissions:
+      contents: read
+      id-token: write # For ESC secrets.
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - id: esc-secrets
-        uses: pulumi/esc-action@6cf9520e68354d86f81c455e8d43eabd58f5c9f5 # v1
+        uses: pulumi/esc-action@b69006bca3bc6e514fb7e08d1593e8d9c49bd064
+        with:
+          environment: github-secrets/pulumi-vfox-pulumi
+          oidc-organization: pulumi
+          oidc-auth: true
+          oidc-requested-token-type: urn:pulumi:token-type:access_token:organization
       - run: mkdir integration-cache
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3
         with:
           # Need to install mise and the repo tools
           install: true
           cache: true
           cache_save: false
       - run: mise plugin link --force vfox-pulumi .
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3
         with:
           cache: true
           mise_toml: |
@@ -86,6 +109,3 @@ jobs:
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
           experimental: true
       - run: cd integration-cache && pulumi-resource-local --version
-
-
-

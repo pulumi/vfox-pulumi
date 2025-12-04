@@ -155,6 +155,9 @@ describe("backend_install", function()
     end)
 
     it("installs official pulumi plugins from get.pulumi.com", function()
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
+
         http_responses = {
             { status_code = 200 }, -- HEAD request to get.pulumi.com returns 200
             { status_code = 200 }, -- download from get.pulumi.com succeeds
@@ -189,6 +192,9 @@ describe("backend_install", function()
     end)
 
     it("installs tool plugins when repo uses pulumi-tool prefix", function()
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
+
         http_responses = {
             { status_code = 200 }, -- HEAD request to get.pulumi.com returns 200
             { status_code = 200 }, -- download succeeds
@@ -208,6 +214,9 @@ describe("backend_install", function()
     end)
 
     it("installs converter plugins when repo uses pulumi-converter prefix", function()
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
+
         http_responses = {
             { status_code = 200 }, -- HEAD request to get.pulumi.com returns 200
             { status_code = 200 }, -- download succeeds
@@ -227,6 +236,9 @@ describe("backend_install", function()
     end)
 
     it("installs third-party plugins from GitHub", function()
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
+
         decoded_payload = {
             assets = {
                 {
@@ -251,8 +263,72 @@ describe("backend_install", function()
         assert.equals("https://api.github.com/repos/equinix/pulumi-equinix/releases/tags/v0.6.0", http_get_calls[1].url)
     end)
 
+    it("uses MISE_GITHUB_TOKEN when falling back to GitHub", function()
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = "ghp_mise_token"
+
+        decoded_payload = {
+            assets = {
+                {
+                    name = "pulumi-resource-snowflake-v0.1.0-darwin-amd64.tar.gz",
+                    url = "https://api.github.com/repos/pulumi/pulumi-snowflake/releases/assets/12345",
+                },
+            },
+        }
+
+        http_responses = {
+            { status_code = 404 }, -- HEAD to get.pulumi.com fails
+            { status_code = 200, body = "" }, -- GitHub API succeeds
+            { status_code = 200 }, -- GitHub download succeeds
+        }
+
+        local result = run({
+            tool = "pulumi/pulumi-snowflake",
+            version = "0.1.0",
+            install_path = "/tmp/install",
+        })
+
+        assert.same({}, result)
+        assert.is_true(#http_get_calls[1].headers > 0)
+        assert.equals("Authorization: token ghp_mise_token", http_get_calls[1].headers[1])
+        assert.is_true(#http_download_calls[1].headers > 0)
+        -- First header is Accept, second is Authorization
+        assert.equals("Authorization: token ghp_mise_token", http_download_calls[1].headers[2])
+    end)
+
+    it("prefers MISE_GITHUB_TOKEN over GITHUB_TOKEN when both are set", function()
+        env_values.GITHUB_TOKEN = "ghp_ignored"
+        env_values.MISE_GITHUB_TOKEN = "ghp_mise_token"
+
+        decoded_payload = {
+            assets = {
+                {
+                    name = "pulumi-resource-snowflake-v0.1.0-darwin-amd64.tar.gz",
+                    url = "https://api.github.com/repos/pulumi/pulumi-snowflake/releases/assets/12345",
+                },
+            },
+        }
+
+        http_responses = {
+            { status_code = 404 }, -- HEAD to get.pulumi.com fails
+            { status_code = 200, body = "" }, -- GitHub API succeeds
+            { status_code = 200 }, -- GitHub download succeeds
+        }
+
+        local result = run({
+            tool = "pulumi/pulumi-snowflake",
+            version = "0.1.0",
+            install_path = "/tmp/install",
+        })
+
+        assert.same({}, result)
+        assert.is_true(#http_get_calls[1].headers > 0)
+        assert.equals("Authorization: token ghp_mise_token", http_get_calls[1].headers[1])
+    end)
+
     it("uses GITHUB_TOKEN when falling back to GitHub", function()
         env_values.GITHUB_TOKEN = "ghp_test_token"
+        env_values.MISE_GITHUB_TOKEN = false
 
         decoded_payload = {
             assets = {
@@ -284,6 +360,9 @@ describe("backend_install", function()
     end)
 
     it("raises when GitHub API returns non-200 for third-party plugin", function()
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
+
         http_responses = {
             { status_code = 404, body = "" },
         }
@@ -301,6 +380,9 @@ describe("backend_install", function()
     end)
 
     it("raises when asset cannot be found in release for third-party plugin", function()
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
+
         decoded_payload = {
             assets = {
                 {
@@ -330,6 +412,9 @@ describe("backend_install", function()
     end)
 
     it("raises when both get.pulumi.com HEAD and GitHub downloads fail", function()
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
+
         decoded_payload = {
             assets = {
                 {
@@ -358,6 +443,9 @@ describe("backend_install", function()
     end)
 
     it("falls back to GitHub when get.pulumi.com HEAD returns non-200", function()
+        env_values.GITHUB_TOKEN = false
+        env_values.MISE_GITHUB_TOKEN = false
+
         decoded_payload = {
             assets = {
                 {

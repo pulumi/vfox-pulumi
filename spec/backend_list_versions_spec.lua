@@ -128,6 +128,8 @@ describe("backend_list_versions", function()
         getenv_stub = stub(os, "getenv", function(name)
             if name == "GITHUB_TOKEN" then
                 return "secret"
+            elseif name == "MISE_GITHUB_TOKEN" then
+                return nil
             end
             return original_getenv(name)
         end)
@@ -183,5 +185,53 @@ describe("backend_list_versions", function()
         assert.has_error(function()
             run({ tool = "owner/repo" })
         end, "No versions found for owner/repo in GitHub releases")
+    end)
+
+    it("uses MISE_GITHUB_TOKEN when set", function()
+        releases = {
+            { tag_name = "v1.0.0", draft = false, prerelease = false },
+        }
+
+        getenv_stub = stub(os, "getenv", function(name)
+            if name == "MISE_GITHUB_TOKEN" then
+                return "ghp_mise_token_123"
+            end
+            return original_getenv(name)
+        end)
+
+        local ok, result = pcall(run, { tool = "owner/repo" })
+
+        assert.is_true(ok)
+        assert.same({ "1.0.0" }, result.versions)
+
+        assert.is_not_nil(http_calls[1])
+        local headers = http_calls[1].headers
+        assert.is_not_nil(headers)
+        assert.same("Bearer ghp_mise_token_123", headers["Authorization"])
+    end)
+
+    it("prefers MISE_GITHUB_TOKEN over GITHUB_TOKEN when both are set", function()
+        releases = {
+            { tag_name = "v1.0.0", draft = false, prerelease = false },
+        }
+
+        getenv_stub = stub(os, "getenv", function(name)
+            if name == "MISE_GITHUB_TOKEN" then
+                return "ghp_mise_token_456"
+            elseif name == "GITHUB_TOKEN" then
+                return "ghp_token_ignored"
+            end
+            return original_getenv(name)
+        end)
+
+        local ok, result = pcall(run, { tool = "owner/repo" })
+
+        assert.is_true(ok)
+        assert.same({ "1.0.0" }, result.versions)
+
+        assert.is_not_nil(http_calls[1])
+        local headers = http_calls[1].headers
+        assert.is_not_nil(headers)
+        assert.same("Bearer ghp_mise_token_456", headers["Authorization"])
     end)
 end)

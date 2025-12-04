@@ -75,10 +75,11 @@ function PLUGIN:BackendInstall(ctx)
         local release_url = "https://api.github.com/repos/" .. owner .. "/" .. repo .. "/releases/tags/v" .. version
 
         -- Add GitHub token if available for authentication
+        -- MISE_GITHUB_TOKEN takes precedence if both are set
         local headers = {}
-        local github_token = os.getenv("GITHUB_TOKEN")
-        if github_token and github_token ~= "" then
-            table.insert(headers, "Authorization: token " .. github_token)
+        local token = os.getenv("MISE_GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN")
+        if token and token ~= "" then
+            table.insert(headers, "Authorization: token " .. token)
         end
 
         -- Fetch release information from GitHub
@@ -137,8 +138,8 @@ function PLUGIN:BackendInstall(ctx)
 
         -- Download from GitHub
         local download_headers = { "Accept: application/octet-stream" }
-        if github_token and github_token ~= "" then
-            table.insert(download_headers, "Authorization: token " .. github_token)
+        if token and token ~= "" then
+            table.insert(download_headers, "Authorization: token " .. token)
         end
 
         http.download_file({
