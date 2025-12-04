@@ -49,7 +49,9 @@ function PLUGIN:BackendListVersions(ctx)
     local json = require("json")
     local headers = { ["User-Agent"] = "mise-backend-pulumi" }
 
-    local token = os.getenv("GITHUB_TOKEN")
+    -- Check for GitHub token in MISE_GITHUB_TOKEN or GITHUB_TOKEN
+    -- MISE_GITHUB_TOKEN takes precedence if both are set
+    local token = os.getenv("MISE_GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN")
     if token and token ~= "" then
         headers["Authorization"] = "Bearer " .. token
     end

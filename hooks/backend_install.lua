@@ -44,8 +44,22 @@ function PLUGIN:BackendInstall(ctx)
     -- Create installation directory
     cmd.exec("mkdir -p " .. final_install_path)
 
+    -- Check for GitHub token in MISE_GITHUB_TOKEN or GITHUB_TOKEN
+    -- If MISE_GITHUB_TOKEN is set, export it as GITHUB_TOKEN for the pulumi CLI
+    local mise_github_token = os.getenv("MISE_GITHUB_TOKEN")
+    local github_token = os.getenv("GITHUB_TOKEN")
+    local token_env = ""
+
+    if mise_github_token and mise_github_token ~= "" then
+        -- MISE_GITHUB_TOKEN takes precedence
+        token_env = "GITHUB_TOKEN=" .. mise_github_token .. " "
+    elseif github_token and github_token ~= "" then
+        -- GITHUB_TOKEN is already set
+        token_env = "GITHUB_TOKEN=" .. github_token .. " "
+    end
+
     -- For third-party plugins (not from pulumi org), add --server flag
-    local install_cmd_parts = { "pulumi", "plugin", "install", type, package_name, version }
+    local install_cmd_parts = { token_env .. "pulumi", "plugin", "install", type, package_name, version }
     if owner ~= "pulumi" then
         table.insert(install_cmd_parts, "--server")
         table.insert(install_cmd_parts, "github://api.github.com/" .. owner)
