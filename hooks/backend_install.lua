@@ -3,9 +3,7 @@
 -- Documentation: https://mise.jdx.dev/backend-plugin-development.html#backendinstall
 function PLUGIN:BackendInstall(ctx)
     local file = require("file")
-    local strings = require("strings")
-    local json = require("json")
-    local cmd = require("cmd")
+    local pulumi = require("pulumi_helpers")
 
     local tool = ctx.tool
     local version = ctx.version
@@ -22,75 +20,28 @@ function PLUGIN:BackendInstall(ctx)
         error("Install path cannot be empty")
     end
 
-    local owner, repo = tool:match("^([^/%s]+)/([^/%s]+)$")
-    if not owner or not repo then
-        error("Tool " .. tool .. " must follow format owner/repo")
-    end
+    local metadata = pulumi.parse_tool(tool)
 
-    local type
-    local package_name
-    if strings.has_prefix(repo, "pulumi-converter") then
-        type = "converter"
-        package_name = repo:gsub("^pulumi%-converter%-", "")
-    elseif strings.has_prefix(repo, "pulumi-tool") then
-        type = "tool"
-        package_name = repo:gsub("^pulumi%-tool%-", "")
-    else
-        type = "resource"
-        package_name = repo:gsub("^pulumi%-", "")
-    end
+    -- Ensure the mise install location exists
+    pulumi.ensure_directory(install_path)
+    local final_install_path = file.join_path(install_path, "bin")
+    pulumi.ensure_directory(final_install_path)
 
-    -- Create installation directory
-    cmd.exec("mkdir -p " .. install_path)
+    -- Always install into PULUMI_HOME
+    pulumi.install_plugin(metadata.kind, metadata.package_name, version)
 
-    local install_cmd = strings.join({ "pulumi", "plugin", "install", type, package_name, version }, " ")
-    local result = cmd.exec(install_cmd)
-    if result:match("error") or result:match("failed") then
-        error(
-            "Failed to install "
-                .. type
-                .. " "
-                .. package_name
-                .. "@"
-                .. version
-                .. ": "
-                .. result
-                .. "\n"
-                .. install_cmd
-        )
-    end
+    -- Resolve Pulumi's plugin directory based on CLI output
+    local pulumi_home = pulumi.pulumi_home()
+    local decoded = pulumi.list_installed_plugins()
+    local kind, plugin_dir_name = pulumi.find_plugin_from_ls(decoded, metadata.package_name, version)
 
-    local pulumi_home = os.getenv("PULUMI_HOME")
-    local home = os.getenv("HOME")
-    if not pulumi_home or pulumi_home == "" then
-        pulumi_home = file.join_path(home, ".pulumi")
-    end
-
-    local ls_cmd = strings.join({ "pulumi", "plugin", "ls", "--json" }, " ")
-    local ls_result = cmd.exec(ls_cmd)
-    if ls_result:match("error") or ls_result:match("failed") then
-        error("Failed to list pulumi plugins: " .. ls_result)
-    end
-    local decoded = json.decode(ls_result)
-
-    -- generate the plugin name as it exists on the filesystem, e.g. resource-local-v0.0.1
-    local plugin_name
-    for _, plugin in ipairs(decoded) do
-        if plugin.name == package_name and plugin.version == version then
-            plugin_name = strings.join({ plugin.kind, plugin.name, "v" .. version }, "-")
-        end
-    end
-
-    if not plugin_name or plugin_name == "" then
+    if not kind or not plugin_dir_name or plugin_dir_name == "" then
         error("Could not find installed tool: " .. tool .. " in PULUMI_HOME: " .. pulumi_home)
     end
 
-    local plugin_path = file.join_path(pulumi_home, "plugins", plugin_name)
-    local final_install_path = file.join_path(install_path, "bin")
-
-    -- symlink the plugin installed by pulumi to the mise install path
-    -- e.g. ~/.local/share/mise/installs/pulumi-plugins-pulumi-pulumi-local/0.1.6/bin
-    file.symlink(plugin_path, final_install_path)
+    -- Copy plugin contents into the mise install directory
+    local plugin_path = file.join_path(pulumi_home, "plugins", plugin_dir_name)
+    pulumi.copy_directory(plugin_path, final_install_path)
 
     return {}
 end
