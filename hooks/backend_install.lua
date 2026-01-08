@@ -23,7 +23,6 @@ function PLUGIN:BackendInstall(ctx)
     local metadata = pulumi.parse_tool(tool)
 
     -- Ensure the mise install location exists
-    pulumi.ensure_directory(install_path)
     local final_install_path = file.join_path(install_path, "bin")
     pulumi.ensure_directory(final_install_path)
 

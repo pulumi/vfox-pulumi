@@ -111,7 +111,17 @@ end
 ---@param package_name string
 ---@param version string
 function pulumi_helpers.install_plugin(kind, package_name, version)
-    local install_cmd = string.format("pulumi plugin install %s %s %s", kind, package_name, version)
+    -- If MISE_GITHUB_TOKEN is set, export it as GITHUB_TOKEN for the pulumi CLI
+    -- If GITHUB_TOKEN is already set, it will be inherited automatically
+    local mise_github_token = os.getenv("MISE_GITHUB_TOKEN")
+    local token_prefix = ""
+
+    if mise_github_token and mise_github_token ~= "" then
+        -- MISE_GITHUB_TOKEN takes precedence - set it as GITHUB_TOKEN for pulumi CLI
+        token_prefix = "GITHUB_TOKEN=" .. mise_github_token .. " "
+    end
+
+    local install_cmd = string.format("%s pulumi plugin install %s %s %s", token_prefix, kind, package_name, version)
     local result = cmd.exec(install_cmd)
     if result:match("error") or result:match("failed") then
         error(
