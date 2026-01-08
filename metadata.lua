@@ -10,7 +10,7 @@ PLUGIN = { -- luacheck: ignore
     version = "0.0.1",
 
     -- Required: Brief description of the backend and tools it manages
-    description = "A mise backend plugin for pulumi tools",
+    description = "A mise backend plugin for pulumi tools and environment variables",
 
     -- Required: Plugin author/maintainer
     author = "pulumi",
@@ -23,7 +23,6 @@ PLUGIN = { -- luacheck: ignore
 
     -- Optional: Important notes for users
     notes = {
-        -- "Requires pulumi to be installed on your system",
-        -- "This plugin manages tools from the pulumi ecosystem"
+        "Provides mise_env hook to extract PULUMI_VERSION_MISE and GO_VERSION_MISE from go.mod",
     },
 }
