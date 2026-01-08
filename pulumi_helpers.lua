@@ -121,7 +121,7 @@ function pulumi_helpers.install_plugin(kind, package_name, version)
         token_prefix = "GITHUB_TOKEN=" .. mise_github_token .. " "
     end
 
-    local install_cmd = string.format("%s pulumi plugin install %s %s %s", token_prefix, kind, package_name, version)
+    local install_cmd = token_prefix .. string.format("pulumi plugin install %s %s %s", kind, package_name, version)
     local result = cmd.exec(install_cmd)
     if result:match("error") or result:match("failed") then
         error(

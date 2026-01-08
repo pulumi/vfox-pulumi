@@ -130,7 +130,6 @@ describe("backend_install", function()
 
         assert.same({}, result)
         assert.same({
-            'mkdir -p "/tmp/install"',
             'mkdir -p "/tmp/install/bin"',
             "pulumi plugin install resource snowflake 0.1.0",
             "pulumi plugin ls --json",
