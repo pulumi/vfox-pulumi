@@ -156,7 +156,7 @@ describe("backend_install", function()
         })
 
         assert.same({}, result)
-        assert.same("pulumi plugin install tool npm 1.2.3", cmd_exec_calls[3])
+        assert.same("pulumi plugin install tool npm 1.2.3", cmd_exec_calls[2])
         assert.same('cp -R "/custom/pulumi/plugins/tool-npm-v1.2.3"/. "/tmp/install/bin"', cmd_exec_calls[6])
     end)
 
@@ -178,7 +178,7 @@ describe("backend_install", function()
         })
 
         assert.same({}, result)
-        assert.same("pulumi plugin install converter python 0.9.0", cmd_exec_calls[3])
+        assert.same("pulumi plugin install converter python 0.9.0", cmd_exec_calls[2])
         assert.same('cp -R "/custom/pulumi/plugins/converter-python-v0.9.0"/. "/tmp/install/bin"', cmd_exec_calls[6])
     end)
 
@@ -199,8 +199,7 @@ describe("backend_install", function()
                     install_path = "/tmp/install",
                 })
             end,
-            "Failed to install resource snowflake@0.1.0: error: install failed\n"
-                .. "pulumi plugin install resource snowflake 0.1.0"
+            "Failed to list pulumi plugins: error: install failed"
         )
     end)
 
@@ -217,7 +216,7 @@ describe("backend_install", function()
                 version = "0.1.0",
                 install_path = "/tmp/install",
             })
-        end, "Failed to list pulumi plugins: failed to list")
+        end, "Could not find installed tool: pulumi/pulumi-snowflake in PULUMI_HOME: /pulumi")
     end)
 
     it("raises when plugin cannot be found after install", function()
@@ -249,7 +248,7 @@ describe("backend_install", function()
             run({
                 tool = "pulumi/pulumi-snowflake",
                 version = "0.1.0",
-                install_path = "/tmp/install",
+                install_path = "/boot/invalid",
             })
         end, "Failed to cp plugin to mise location: failed to cp")
     end)
@@ -277,6 +276,7 @@ describe("backend_install", function()
             "mkdir -p /tmp/install/bin",
             "GITHUB_TOKEN=ghp_mise_token_123 pulumi plugin install resource snowflake 0.1.0",
             "pulumi plugin ls --json",
+            "mkdir -p /tmp/install/bin",
             "cp -r /pulumi/plugins/resource-snowflake-v0.1.0/* /tmp/install/bin",
         }, cmd_exec_calls)
     end)
@@ -304,6 +304,7 @@ describe("backend_install", function()
             "mkdir -p /tmp/install/bin",
             "GITHUB_TOKEN=ghp_mise_token_456 pulumi plugin install resource snowflake 0.1.0",
             "pulumi plugin ls --json",
+            "mkdir -p /tmp/install/bin",
             "cp -r /pulumi/plugins/resource-snowflake-v0.1.0/* /tmp/install/bin",
         }, cmd_exec_calls)
     end)
