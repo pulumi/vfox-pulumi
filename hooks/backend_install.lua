@@ -55,7 +55,7 @@ function PLUGIN:BackendInstall(ctx)
     end
 
     -- For third-party plugins (not from pulumi org), add --server flag
-    local install_cmd_parts = { token_prefix .. "pulumi", "plugin", "install", type, package_name, version }
+    local install_cmd_parts = { token_prefix .. "mise", "exec", "--", "pulumi", "plugin", "install", type, package_name, version }
     if owner ~= "pulumi" then
         table.insert(install_cmd_parts, "--server")
         table.insert(install_cmd_parts, "github://api.github.com/" .. owner)
@@ -83,7 +83,7 @@ function PLUGIN:BackendInstall(ctx)
         pulumi_home = file.join_path(home, ".pulumi")
     end
 
-    local ls_cmd = strings.join({ "pulumi", "plugin", "ls", "--json" }, " ")
+    local ls_cmd = strings.join({ "mise", "exec", "pulumi", "--", "plugin", "ls", "--json" }, " ")
     local ls_result = cmd.exec(ls_cmd)
     if ls_result:match("error") or ls_result:match("failed") then
         error("Failed to list pulumi plugins: " .. ls_result)
