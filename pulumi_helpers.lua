@@ -121,7 +121,14 @@ function pulumi_helpers.install_plugin(kind, package_name, version)
         token_prefix = "GITHUB_TOKEN=" .. mise_github_token .. " "
     end
 
-    local install_cmd = token_prefix .. string.format("pulumi plugin install %s %s %s", kind, package_name, version)
+    -- For third-party plugins (not from pulumi org), add --server flag
+    local install_cmd_parts = { token_prefix .. "pulumi", "plugin", "install", kind, package_name, version }
+    if owner ~= "pulumi" then
+        table.insert(install_cmd_parts, "--server")
+        table.insert(install_cmd_parts, "github://api.github.com/" .. owner)
+    end
+
+    local install_cmd = strings.join(install_cmd_parts, " ")
     local result = cmd.exec(install_cmd)
     if result:match("error") or result:match("failed") then
         error(
