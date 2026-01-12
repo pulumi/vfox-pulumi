@@ -13,7 +13,7 @@ describe("backend_install", function()
         if not _G.RUNTIME then
             _G.RUNTIME = {
                 osType = "Darwin",
-                archType = "arm64"
+                archType = "arm64",
             }
         end
         dofile("hooks/backend_install.lua")
@@ -49,24 +49,27 @@ describe("backend_install", function()
         package.loaded.cmd = {
             exec = function(command)
                 table.insert(cmd_exec_calls, command)
-                -- Allow test -f to fail for cache check
-                if command:match("^test %-f") then
+                -- Make cache check fail (test -f mise_bin_path/*)
+                if command:match("^test %-f .*/bin/%*") then
                     error("file not found")
                 end
+                -- Make other checks succeed (temp dir, downloaded file)
+                -- This includes: test -d for temp dir, test -f for downloaded file
                 return ""
             end,
         }
 
         package.loaded.http = {
             download_file = function(opts, path)
-                table.insert(http_download_calls, {url = opts.url, path = path})
-                -- Simulate successful download by default
+                table.insert(http_download_calls, { url = opts.url, path = path })
+                -- Simulate successful download by returning nil
+                return nil
             end,
         }
 
         package.loaded.archiver = {
             decompress = function(archive_path, destination)
-                table.insert(archiver_decompress_calls, {archive = archive_path, dest = destination})
+                table.insert(archiver_decompress_calls, { archive = archive_path, dest = destination })
             end,
         }
 
@@ -139,7 +142,11 @@ describe("backend_install", function()
 
         -- Verify download was attempted from CDN
         assert.same(1, #http_download_calls)
-        assert.is_truthy(http_download_calls[1].url:match("https://get%.pulumi%.com/releases/plugins/pulumi%-resource%-snowflake%-v0%.1%.0%-darwin%-arm64%.tar%.gz"))
+        assert.is_truthy(
+            http_download_calls[1].url:match(
+                "https://get%.pulumi%.com/releases/plugins/pulumi%-resource%-snowflake%-v0%.1%.0%-darwin%-arm64%.tar%.gz"
+            )
+        )
 
         -- Verify extraction
         assert.same(1, #archiver_decompress_calls)
@@ -153,19 +160,37 @@ describe("backend_install", function()
         local found_rm_temp = false
 
         for _, cmd in ipairs(cmd_exec_calls) do
-            if cmd:match("mkdir %-p.*pulumi%-plugin") then found_mkdir_temp = true end
-            if cmd:match("mkdir %-p /tmp/install/bin") then found_mkdir_mise = true end
-            if cmd:match("cp %-r.*extracted/%* /tmp/install/bin") then found_cp_mise = true end
-            if cmd:match("mkdir %-p /home/test/%.pulumi/plugins") then found_mkdir_pulumi = true end
-            if cmd:match("ln %-s /tmp/install/bin /home/test/%.pulumi/plugins/resource%-snowflake%-v0%.1%.0") then found_symlink = true end
-            if cmd:match("rm %-rf.*pulumi%-plugin") then found_rm_temp = true end
+            -- Match temp directory creation (os.tmpname() pattern, but not install paths)
+            if (cmd:match("mkdir %-p /tmp/") or cmd:match("mkdir %-p.*lua_")) and not cmd:match("/install") then
+                found_mkdir_temp = true
+            end
+            if cmd:match("mkdir %-p /tmp/install/bin") then
+                found_mkdir_mise = true
+            end
+            if cmd:match("cp %-r.*extracted/%* /tmp/install/bin") then
+                found_cp_mise = true
+            end
+            if cmd:match("mkdir %-p /home/test/%.pulumi/plugins/resource%-snowflake%-v0%.1%.0") then
+                found_mkdir_pulumi = true
+            end
+            if
+                cmd:match(
+                    "ln %-s /tmp/install/bin/pulumi%-resource%-snowflake /home/test/%.pulumi/plugins/resource%-snowflake%-v0%.1%.0/pulumi%-resource%-snowflake"
+                )
+            then
+                found_symlink = true
+            end
+            -- Match temp directory cleanup (os.tmpname() pattern, but not install paths)
+            if (cmd:match("rm %-rf /tmp/") or cmd:match("rm %-rf.*lua_")) and not cmd:match("/install") then
+                found_rm_temp = true
+            end
         end
 
         assert.is_true(found_mkdir_temp, "Should create temp directory")
         assert.is_true(found_mkdir_mise, "Should create mise bin directory")
         assert.is_true(found_cp_mise, "Should copy to mise location")
-        assert.is_true(found_mkdir_pulumi, "Should create PULUMI_HOME plugins directory")
-        assert.is_true(found_symlink, "Should create symlink to PULUMI_HOME")
+        assert.is_true(found_mkdir_pulumi, "Should create PULUMI_HOME plugin directory")
+        assert.is_true(found_symlink, "Should create symlink in PULUMI_HOME")
         assert.is_true(found_rm_temp, "Should cleanup temp directory")
     end)
 
@@ -188,7 +213,11 @@ describe("backend_install", function()
         -- Verify symlink uses correct type
         local found_symlink = false
         for _, cmd in ipairs(cmd_exec_calls) do
-            if cmd:match("ln %-s /tmp/install/bin /custom/pulumi/plugins/tool%-npm%-v1%.2%.3") then
+            if
+                cmd:match(
+                    "ln %-s /tmp/install/bin/pulumi%-tool%-npm /custom/pulumi/plugins/tool%-npm%-v1%.2%.3/pulumi%-tool%-npm"
+                )
+            then
                 found_symlink = true
             end
         end
@@ -214,7 +243,11 @@ describe("backend_install", function()
         -- Verify symlink uses correct type
         local found_symlink = false
         for _, cmd in ipairs(cmd_exec_calls) do
-            if cmd:match("ln %-s /tmp/install/bin /custom/pulumi/plugins/converter%-python%-v0%.9%.0") then
+            if
+                cmd:match(
+                    "ln %-s /tmp/install/bin/pulumi%-converter%-python /custom/pulumi/plugins/converter%-python%-v0%.9%.0/pulumi%-converter%-python"
+                )
+            then
                 found_symlink = true
             end
         end
@@ -229,11 +262,12 @@ describe("backend_install", function()
         package.loaded.http = {
             download_file = function(opts, path)
                 download_count = download_count + 1
-                table.insert(http_download_calls, {url = opts.url, path = path})
+                table.insert(http_download_calls, { url = opts.url, path = path })
                 if download_count == 1 then
-                    error("CDN download failed")
+                    return "CDN download failed"
                 end
                 -- Second call succeeds
+                return nil
             end,
         }
         load_subject()
@@ -249,7 +283,9 @@ describe("backend_install", function()
         -- Verify both downloads were attempted
         assert.same(2, #http_download_calls)
         assert.is_truthy(http_download_calls[1].url:match("https://get%.pulumi%.com"))
-        assert.is_truthy(http_download_calls[2].url:match("https://github%.com/pulumi/pulumi%-random/releases/download"))
+        assert.is_truthy(
+            http_download_calls[2].url:match("https://github%.com/pulumi/pulumi%-random/releases/download")
+        )
     end)
 
     it("uses GitHub directly for third-party providers", function()
@@ -301,13 +337,19 @@ describe("backend_install", function()
         local found_symlink = false
         local found_mkdir_pulumi = false
         for _, cmd in ipairs(cmd_exec_calls) do
-            if cmd:match("mkdir %-p /home/test/%.pulumi/plugins") then found_mkdir_pulumi = true end
-            if cmd:match("ln %-s /tmp/install/bin /home/test/%.pulumi/plugins/resource%-aws%-v6%.0%.0") then
+            if cmd:match("mkdir %-p /home/test/%.pulumi/plugins/resource%-aws%-v6%.0%.0") then
+                found_mkdir_pulumi = true
+            end
+            if
+                cmd:match(
+                    "ln %-s /tmp/install/bin/pulumi%-resource%-aws /home/test/%.pulumi/plugins/resource%-aws%-v6%.0%.0/pulumi%-resource%-aws"
+                )
+            then
                 found_symlink = true
             end
         end
 
-        assert.is_true(found_mkdir_pulumi, "Should create PULUMI_HOME directory")
+        assert.is_true(found_mkdir_pulumi, "Should create PULUMI_HOME plugin directory")
         assert.is_true(found_symlink, "Should recreate symlink")
     end)
 
@@ -322,12 +364,13 @@ describe("backend_install", function()
         -- Re-setup mocks
         package.loaded.http = {
             download_file = function(opts, path)
-                table.insert(http_download_calls, {url = opts.url, path = path})
+                table.insert(http_download_calls, { url = opts.url, path = path })
+                return nil
             end,
         }
         package.loaded.archiver = {
             decompress = function(archive_path, destination)
-                table.insert(archiver_decompress_calls, {archive = archive_path, dest = destination})
+                table.insert(archiver_decompress_calls, { archive = archive_path, dest = destination })
             end,
         }
         package.loaded.cmd = {
@@ -336,16 +379,21 @@ describe("backend_install", function()
                 if command:match("^test %-f") then
                     error("file not found")
                 end
+                -- Simulate cache miss for Windows dir/findstr check
+                if command:match("^dir .* | findstr") or command:match("^dir.*|.*findstr") then
+                    error("no files found")
+                end
                 return ""
             end,
         }
 
         _G.RUNTIME = {
             osType = "Windows",
-            archType = "amd64"
+            archType = "amd64",
         }
+        env_values.TEMP = "C:/Users/test/AppData/Local/Temp"
         env_values.USERPROFILE = "C:/Users/test"
-        env_values.HOME = nil  -- Use nil instead of false
+        env_values.HOME = nil -- Use nil instead of false
 
         load_subject()
 
@@ -360,8 +408,10 @@ describe("backend_install", function()
         -- Verify Windows asset name in download URL
         assert.same(1, #http_download_calls, "Expected 1 download call, got " .. #http_download_calls)
         if #http_download_calls > 0 and http_download_calls[1] then
-            assert.is_truthy(http_download_calls[1].url:match("windows%-amd64"),
-                "Expected URL to contain 'windows-amd64', got: " .. tostring(http_download_calls[1].url))
+            assert.is_truthy(
+                http_download_calls[1].url:match("windows%-amd64"),
+                "Expected URL to contain 'windows-amd64', got: " .. tostring(http_download_calls[1].url)
+            )
         else
             error("No download calls recorded")
         end
@@ -369,16 +419,22 @@ describe("backend_install", function()
         -- Verify Windows commands are used
         local found_rmdir = false
         local found_mkdir_windows = false
-        local found_xcopy = false
+        local found_copy = false
 
         for _, cmd in ipairs(cmd_exec_calls) do
-            if cmd:match("rmdir /S /Q") then found_rmdir = true end
-            if cmd:match("mkdir.*2>NUL") then found_mkdir_windows = true end
-            if cmd:match("xcopy /E /I /Y") then found_xcopy = true end
+            if cmd:match("rmdir /S /Q") then
+                found_rmdir = true
+            end
+            if cmd:match("mkdir.*2>NUL") then
+                found_mkdir_windows = true
+            end
+            if cmd:match("copy /Y") then
+                found_copy = true
+            end
         end
 
         assert.is_true(found_rmdir or found_mkdir_windows, "Should use Windows mkdir command")
-        assert.is_true(found_xcopy, "Should use xcopy instead of ln")
+        assert.is_true(found_copy, "Should use copy instead of ln")
     end)
 
     it("raises when download fails from both sources", function()
@@ -387,8 +443,8 @@ describe("backend_install", function()
         -- Make all downloads fail
         package.loaded.http = {
             download_file = function(opts, path)
-                table.insert(http_download_calls, {url = opts.url, path = path})
-                error("Network error")
+                table.insert(http_download_calls, { url = opts.url, path = path })
+                return "Network error"
             end,
         }
         load_subject()
@@ -408,7 +464,7 @@ describe("backend_install", function()
         -- Make extraction fail
         package.loaded.archiver = {
             decompress = function(archive_path, destination)
-                table.insert(archiver_decompress_calls, {archive = archive_path, dest = destination})
+                table.insert(archiver_decompress_calls, { archive = archive_path, dest = destination })
                 error("Corrupted archive")
             end,
         }
@@ -434,27 +490,30 @@ describe("backend_install", function()
         -- Re-setup mocks
         package.loaded.http = {
             download_file = function(opts, path)
-                table.insert(http_download_calls, {url = opts.url, path = path})
+                table.insert(http_download_calls, { url = opts.url, path = path })
+                return nil
             end,
         }
         package.loaded.archiver = {
             decompress = function(archive_path, destination)
-                table.insert(archiver_decompress_calls, {archive = archive_path, dest = destination})
+                table.insert(archiver_decompress_calls, { archive = archive_path, dest = destination })
             end,
         }
         package.loaded.cmd = {
             exec = function(command)
                 table.insert(cmd_exec_calls, command)
-                if command:match("^test %-f") then
+                -- Make cache check fail (test -f mise_bin_path/*)
+                if command:match("^test %-f .*/bin/%*") then
                     error("file not found")
                 end
+                -- Make other checks succeed (temp dir, downloaded file)
                 return ""
             end,
         }
 
         _G.RUNTIME = {
             osType = "Linux",
-            archType = "x86_64"  -- Should map to amd64
+            archType = "x86_64", -- Should map to amd64
         }
         env_values.HOME = "/home/test"
 
@@ -471,8 +530,10 @@ describe("backend_install", function()
         -- Verify correct OS and arch in URL
         assert.same(1, #http_download_calls, "Expected 1 download call, got " .. #http_download_calls)
         if #http_download_calls > 0 and http_download_calls[1] then
-            assert.is_truthy(http_download_calls[1].url:match("linux%-amd64"),
-                "Expected URL to contain 'linux-amd64', got: " .. tostring(http_download_calls[1].url))
+            assert.is_truthy(
+                http_download_calls[1].url:match("linux%-amd64"),
+                "Expected URL to contain 'linux-amd64', got: " .. tostring(http_download_calls[1].url)
+            )
         else
             error("No download calls recorded")
         end

@@ -38,7 +38,8 @@ jobs:
       id-token: write # For ESC secrets.
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+      fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -52,10 +53,8 @@ jobs:
       - run: mkdir integration-cache
       - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3
         with:
-          # Need to install mise and the repo tools
-          install: true
-          cache: true
-          cache_save: false
+          install: false # Just need to install mise, not lua etc.
+          cache: false
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
       - run: mise plugin link --force vfox-pulumi .
       - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3
@@ -66,10 +65,20 @@ jobs:
             "vfox-pulumi:pulumi/pulumi-local" = "0.1.6"
             "vfox-pulumi:pulumi/pulumi-tls" = "latest"
             "vfox-pulumi:equinix/pulumi-equinix" = "0.6.0"
+            pulumi = "3.215.0"
           working_directory: integration-cache
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
           experimental: true
-      - run: cd integration-cache && pulumi-resource-local --version
+      - name: Verify Pulumi plugins
+        shell: bash
+        run: |
+          cd integration-cache
+          pulumi-resource-local --version
+          output=$(pulumi plugin ls)
+          echo "$output"
+          echo "$output" | grep -q "local" || { echo "Error: 'local' provider not found in pulumi plugin ls output"; exit 1; }
+          echo "$output" | grep -q "tls" || { echo "Error: 'tls' provider not found in pulumi plugin ls output"; exit 1; }
+          echo "$output" | grep -q "equinix" || { echo "Error: 'equinix' provider not found in pulumi plugin ls output"; exit 1; }
 
   integration-cache:
     needs: integration
@@ -78,7 +87,7 @@ jobs:
       id-token: write # For ESC secrets.
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -92,10 +101,9 @@ jobs:
       - run: mkdir integration-cache
       - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3
         with:
-          # Need to install mise and the repo tools
-          install: true
-          cache: true
-          cache_save: false
+          install: false # Just need to install mise, not lua etc.
+          cache: false
+          github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
       - run: mise plugin link --force vfox-pulumi .
       - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3
         with:
@@ -105,7 +113,17 @@ jobs:
             "vfox-pulumi:pulumi/pulumi-local" = "0.1.6"
             "vfox-pulumi:pulumi/pulumi-tls" = "latest"
             "vfox-pulumi:equinix/pulumi-equinix" = "0.6.0"
+            pulumi = "3.215.0"
           working_directory: integration-cache
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
           experimental: true
-      - run: cd integration-cache && pulumi-resource-local --version
+      - name: Verify Pulumi plugins
+        shell: bash
+        run: |
+          cd integration-cache
+          pulumi-resource-local --version
+          output=$(pulumi plugin ls)
+          echo "$output"
+          echo "$output" | grep -q "local" || { echo "Error: 'local' provider not found in pulumi plugin ls output"; exit 1; }
+          echo "$output" | grep -q "tls" || { echo "Error: 'tls' provider not found in pulumi plugin ls output"; exit 1; }
+          echo "$output" | grep -q "equinix" || { echo "Error: 'equinix' provider not found in pulumi plugin ls output"; exit 1; }

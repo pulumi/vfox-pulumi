@@ -4,23 +4,101 @@
 
 -- Helper Functions
 
+-- Check if running on Windows (case-insensitive)
+function is_windows()
+    local os_type = RUNTIME.osType
+    return os_type == "Windows" or os_type == "windows" or os_type == "WINDOWS"
+end
+
+-- Create a temporary directory with a unique name
+function create_temp_dir()
+    local cmd = require("cmd")
+
+    if is_windows() then
+        -- Use TEMP environment variable directly (already points to the temp directory)
+        local base_temp = os.getenv("TEMP")
+        if not base_temp or base_temp == "" then
+            base_temp = os.getenv("TMP")
+        end
+        if not base_temp or base_temp == "" then
+            error("Neither TEMP nor TMP environment variables are set")
+        end
+
+        -- Normalize base_temp to use forward slashes internally
+        base_temp = base_temp:gsub("\\", "/")
+        print("DEBUG: base_temp (normalized): " .. base_temp)
+
+        -- Generate a unique name using os.tmpname()
+        local tmp_name_full = os.tmpname()
+        print("DEBUG: os.tmpname() returned: " .. tmp_name_full)
+
+        -- os.tmpname() creates a file, so remove it
+        os.remove(tmp_name_full)
+
+        -- Extract just the basename (e.g., "s2mk.0") and replace dots with underscores
+        local tmp_name = tmp_name_full:match("[^/\\]+$")
+        print("DEBUG: Extracted basename: " .. tmp_name)
+
+        -- Replace dots with underscores to make it a valid directory name (e.g., "s2mk.0" -> "s2mk_0")
+        tmp_name = tmp_name:gsub("%.", "_")
+        print("DEBUG: After replacing dots: " .. tmp_name)
+
+        -- Build the directory path with forward slashes internally
+        local tmp_dir_name = base_temp .. "/lua_temp_" .. tmp_name
+        print("DEBUG: Temp directory path (forward slashes): " .. tmp_dir_name)
+
+        -- Normalize to backslashes for Windows mkdir (same pattern as rest of file)
+        local normalized_temp = tmp_dir_name:gsub("/", "\\")
+        print("DEBUG: Temp directory path (backslashes): " .. normalized_temp)
+
+        local mkdir_cmd = 'mkdir "' .. normalized_temp .. '"'
+        print("DEBUG: Executing command: " .. mkdir_cmd)
+
+        cmd.exec(mkdir_cmd)
+        print("DEBUG: mkdir command completed")
+
+        return tmp_dir_name  -- Return with forward slashes for consistency
+    else
+        -- On Unix, use cmd.exec with mkdir -p
+        local temp_path = os.tmpname()
+        os.remove(temp_path)
+        cmd.exec("mkdir -p " .. temp_path)
+        return temp_path
+    end
+end
+
 -- Get platform information (OS and architecture) in Pulumi's expected format
 function get_platform_info()
-    local os_map = {Darwin = "darwin", Linux = "linux", Windows = "windows"}
+    local os_map = {
+        Darwin = "darwin",
+        darwin = "darwin",
+        Linux = "linux",
+        linux = "linux",
+        Windows = "windows",
+        windows = "windows",
+    }
     local arch_map = {
-        arm64 = "arm64", aarch64 = "arm64",
-        amd64 = "amd64", x86_64 = "amd64", x64 = "amd64"
+        arm64 = "arm64",
+        aarch64 = "arm64",
+        amd64 = "amd64",
+        x86_64 = "amd64",
+        x64 = "amd64",
     }
 
     local os = os_map[RUNTIME.osType]
     local arch = arch_map[RUNTIME.archType]
 
     if not os or not arch then
-        error(string.format("Unsupported platform: %s/%s. Supported: Darwin/Linux/Windows with arm64/amd64",
-                           RUNTIME.osType, RUNTIME.archType))
+        error(
+            string.format(
+                "Unsupported platform: %s/%s. Supported: Darwin/Linux/Windows with arm64/amd64",
+                RUNTIME.osType,
+                RUNTIME.archType
+            )
+        )
     end
 
-    return {os = os, arch = arch}
+    return { os = os, arch = arch }
 end
 
 -- Build the standard asset name for a plugin
@@ -36,19 +114,21 @@ end
 
 -- Build the GitHub browser download URL (avoids API rate limits)
 function build_github_download_url(owner, repo, version, asset_name)
-    return string.format("https://github.com/%s/%s/releases/download/v%s/%s",
-                        owner, repo, version, asset_name)
+    return string.format("https://github.com/%s/%s/releases/download/v%s/%s", owner, repo, version, asset_name)
 end
 
 -- Try downloading from get.pulumi.com CDN
 function try_pulumi_cdn_download(url, download_path)
     local http = require("http")
 
-    local success, err = pcall(function()
-        http.download_file({url = url}, download_path)
-    end)
+    -- http.download_file returns nil on success, error string on failure
+    local err = http.download_file({ url = url }, download_path)
 
-    return success, err
+    if err ~= nil then
+        return false, err
+    end
+
+    return true, nil
 end
 
 -- Try downloading from GitHub releases (browser URL, no API)
@@ -57,12 +137,11 @@ function try_github_download(owner, repo, version, asset_name, download_path)
 
     local download_url = build_github_download_url(owner, repo, version, asset_name)
 
-    local success, download_err = pcall(function()
-        http.download_file({url = download_url}, download_path)
-    end)
+    -- http.download_file returns nil on success, error string on failure
+    local err = http.download_file({ url = download_url }, download_path)
 
-    if not success then
-        return false, "GitHub download failed: " .. tostring(download_err)
+    if err ~= nil then
+        return false, "GitHub download failed: " .. tostring(err)
     end
 
     return true, nil
@@ -100,7 +179,13 @@ function extract_plugin(tarball_path, destination)
     local archiver = require("archiver")
     local cmd = require("cmd")
 
-    cmd.exec("mkdir -p " .. destination)
+    if is_windows() then
+        -- Normalize to backslashes only
+        local normalized_dest = destination:gsub("/", "\\")
+        cmd.exec('mkdir "' .. normalized_dest .. '"')
+    else
+        cmd.exec("mkdir -p " .. destination)
+    end
     archiver.decompress(tarball_path, destination)
 end
 
@@ -110,8 +195,16 @@ function install_to_mise(extracted_path, install_path)
     local cmd = require("cmd")
 
     local bin_path = file.join_path(install_path, "bin")
-    cmd.exec("mkdir -p " .. bin_path)
-    cmd.exec("cp -r " .. extracted_path .. "/* " .. bin_path)
+    if is_windows() then
+        -- Normalize to backslashes only
+        local normalized_bin = bin_path:gsub("/", "\\")
+        local normalized_extracted = extracted_path:gsub("/", "\\")
+        cmd.exec('mkdir "' .. normalized_bin .. '"')
+        cmd.exec(string.format('xcopy /E /I /Y "%s" "%s"', normalized_extracted, normalized_bin))
+    else
+        cmd.exec("mkdir -p " .. bin_path)
+        cmd.exec("cp -r " .. extracted_path .. "/* " .. bin_path)
+    end
 end
 
 -- Install to PULUMI_HOME using platform-specific approach
@@ -124,29 +217,42 @@ function install_to_pulumi_home(mise_bin_path, kind, name, version)
 
     local pulumi_home = os.getenv("PULUMI_HOME")
     if not pulumi_home or pulumi_home == "" then
-        if RUNTIME.osType == "Windows" then
+        if is_windows() then
             pulumi_home = file.join_path(os.getenv("USERPROFILE"), ".pulumi")
         else
             pulumi_home = file.join_path(os.getenv("HOME"), ".pulumi")
         end
     end
 
-    -- Build: PULUMI_HOME/plugins/<type>-<name>-v<version>
-    local plugin_name = strings.join({kind, name, "v" .. version}, "-")
-    local plugin_dir = file.join_path(pulumi_home, "plugins", plugin_name)
+    -- Build paths: PULUMI_HOME/plugins/<type>-<name>-v<version>/pulumi-<type>-<name>
+    local plugin_dir_name = strings.join({ kind, name, "v" .. version }, "-")
+    local binary_name = strings.join({ "pulumi", kind, name }, "-")
+    local plugin_dir = file.join_path(pulumi_home, "plugins", plugin_dir_name)
     local plugins_dir = file.join_path(pulumi_home, "plugins")
+    local source_binary = file.join_path(mise_bin_path, binary_name)
+    local target_binary = file.join_path(plugin_dir, binary_name)
 
     -- Platform-specific installation
-    if RUNTIME.osType == "Windows" then
-        -- Windows: Copy files (symlinks unreliable)
-        cmd.exec("rmdir /S /Q " .. plugin_dir .. " 2>NUL")  -- Remove if exists, ignore errors
-        cmd.exec("mkdir " .. plugins_dir .. " 2>NUL")  -- Create parent, ignore if exists
-        cmd.exec(string.format('xcopy /E /I /Y "%s" "%s"', mise_bin_path, plugin_dir))
+    if is_windows() then
+        -- Windows: Copy binary
+        -- Normalize paths to backslashes only
+        local normalized_plugin_dir = plugin_dir:gsub("/", "\\")
+        local normalized_plugins_dir = plugins_dir:gsub("/", "\\")
+        local normalized_source = source_binary:gsub("/", "\\")
+        local normalized_target = target_binary:gsub("/", "\\")
+
+        -- Remove old plugin dir if exists (ignore errors)
+        pcall(function() cmd.exec('rmdir /S /Q "' .. normalized_plugin_dir .. '"') end)
+        -- Create parent directory (might already exist from other plugins)
+        pcall(function() cmd.exec('mkdir "' .. normalized_plugins_dir .. '"') end)
+        -- Create plugin directory
+        cmd.exec('mkdir "' .. normalized_plugin_dir .. '"')
+        cmd.exec(string.format('copy /Y "%s" "%s"', normalized_source, normalized_target))
     else
-        -- Unix: Symlink (saves disk space)
+        -- Unix: Symlink binary (saves disk space)
         cmd.exec("rm -rf " .. plugin_dir)
-        cmd.exec("mkdir -p " .. plugins_dir)
-        cmd.exec(string.format("ln -s %s %s", mise_bin_path, plugin_dir))
+        cmd.exec("mkdir -p " .. plugin_dir)
+        cmd.exec(string.format("ln -s %s %s", source_binary, target_binary))
     end
 end
 
@@ -196,7 +302,12 @@ function PLUGIN:BackendInstall(ctx)
     -- If mise location has the binary but PULUMI_HOME link/copy is missing, just recreate it
     local already_exists = pcall(function()
         -- Check if any files exist in mise bin path
-        cmd.exec("test -f " .. mise_bin_path .. "/*")
+        if is_windows() then
+            local normalized_path = mise_bin_path:gsub("/", "\\")
+            cmd.exec('dir "' .. normalized_path .. '" /A-D 2>NUL | findstr /R /C:"pulumi-"')
+        else
+            cmd.exec("test -f " .. mise_bin_path .. "/*")
+        end
     end)
 
     if already_exists then
@@ -206,17 +317,54 @@ function PLUGIN:BackendInstall(ctx)
     end
 
     -- Need to download: create temporary directory for download/extraction
-    local temp_dir = os.tmpname() .. "-pulumi-plugin"
-    cmd.exec("mkdir -p " .. temp_dir)
+    local temp_dir = create_temp_dir()
 
+    -- Verify temp directory was created
+    local dir_check_success = pcall(function()
+        if is_windows() then
+            local normalized_temp = temp_dir:gsub("/", "\\")
+            cmd.exec('dir "' .. normalized_temp .. '" >NUL 2>&1')
+        else
+            cmd.exec("test -d " .. temp_dir)
+        end
+    end)
+    if not dir_check_success then
+        error("Failed to create temporary directory: " .. temp_dir)
+    end
+
+    -- Build paths using file.join_path (uses forward slashes, works on all platforms)
     local tarball_path = file.join_path(temp_dir, "plugin.tar.gz")
     local extract_path = file.join_path(temp_dir, "extracted")
 
     -- Download plugin
     local success, message = download_plugin(owner, repo, type, package_name, version, tarball_path)
     if not success then
-        cmd.exec("rm -rf " .. temp_dir)
+        if is_windows() then
+            local normalized_temp = temp_dir:gsub("/", "\\")
+            pcall(function() cmd.exec('rmdir /S /Q "' .. normalized_temp .. '"') end)
+        else
+            cmd.exec("rm -rf " .. temp_dir)
+        end
         error("Failed to download " .. type .. " " .. package_name .. "@" .. version .. ": " .. message)
+    end
+
+    -- Verify file was downloaded
+    local file_check_success = pcall(function()
+        if is_windows() then
+            local normalized_tarball = tarball_path:gsub("/", "\\")
+            cmd.exec('dir "' .. normalized_tarball .. '" >NUL 2>&1')
+        else
+            cmd.exec("test -f " .. tarball_path)
+        end
+    end)
+    if not file_check_success then
+        if is_windows() then
+            local normalized_temp = temp_dir:gsub("/", "\\")
+            pcall(function() cmd.exec('rmdir /S /Q "' .. normalized_temp .. '"') end)
+        else
+            cmd.exec("rm -rf " .. temp_dir)
+        end
+        error("Downloaded file not found: " .. tarball_path)
     end
 
     -- Extract plugin
@@ -224,7 +372,12 @@ function PLUGIN:BackendInstall(ctx)
         extract_plugin(tarball_path, extract_path)
     end)
     if not extract_success then
-        cmd.exec("rm -rf " .. temp_dir)
+        if is_windows() then
+            local normalized_temp = temp_dir:gsub("/", "\\")
+            pcall(function() cmd.exec('rmdir /S /Q "' .. normalized_temp .. '"') end)
+        else
+            cmd.exec("rm -rf " .. temp_dir)
+        end
         error("Failed to extract plugin: " .. tostring(extract_err))
     end
 
@@ -233,7 +386,12 @@ function PLUGIN:BackendInstall(ctx)
         install_to_mise(extract_path, install_path)
     end)
     if not mise_success then
-        cmd.exec("rm -rf " .. temp_dir)
+        if is_windows() then
+            local normalized_temp = temp_dir:gsub("/", "\\")
+            pcall(function() cmd.exec('rmdir /S /Q "' .. normalized_temp .. '"') end)
+        else
+            cmd.exec("rm -rf " .. temp_dir)
+        end
         error("Failed to install to mise location: " .. tostring(mise_err))
     end
 
@@ -242,12 +400,22 @@ function PLUGIN:BackendInstall(ctx)
         install_to_pulumi_home(mise_bin_path, type, package_name, version)
     end)
     if not pulumi_success then
-        cmd.exec("rm -rf " .. temp_dir)
+        if is_windows() then
+            local normalized_temp = temp_dir:gsub("/", "\\")
+            pcall(function() cmd.exec('rmdir /S /Q "' .. normalized_temp .. '"') end)
+        else
+            cmd.exec("rm -rf " .. temp_dir)
+        end
         error("Failed to install to PULUMI_HOME: " .. tostring(pulumi_err))
     end
 
     -- Clean up
-    cmd.exec("rm -rf " .. temp_dir)
+    if is_windows() then
+        local forward_temp = temp_dir:gsub("\\", "/")
+        pcall(function() cmd.exec('rmdir /S /Q "' .. forward_temp .. '"') end)
+    else
+        cmd.exec("rm -rf " .. temp_dir)
+    end
 
     return {}
 end
