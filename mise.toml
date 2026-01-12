@@ -1,11 +1,12 @@
 [env]
 MISE_USE_VERSIONS_HOST = "0"
+ASDF_LUA_LUAROCKS_VERSION = "3.11.1"
 _.path = { path = ["lua_modules/bin"], tools = true }
 
 [tools]
 actionlint = "latest"
 hk = "latest"
-lua = "5.4"
+"asdf:lua" = "5.4"
 pkl = "latest"
 pulumi = "latest"
 stylua = "latest"
