@@ -1,100 +1,100 @@
 -- Extracts PULUMI_VERSION_MISE and GO_VERSION_MISE from go.mod
 
 local function read_file(path)
-  local file = io.open(path, "r")
-  if not file then
-    return nil
-  end
-  local content = file:read("*all")
-  file:close()
-  return content
+    local file = io.open(path, "r")
+    if not file then
+        return nil
+    end
+    local content = file:read("*all")
+    file:close()
+    return content
 end
 
 local function extract_pulumi_version(content, module_path)
-  -- Look for lines containing the module path
-  for line in content:gmatch("[^\r\n]+") do
-    if line:find(module_path, 1, true) then
-      -- Extract version starting with 'v' followed by digits
-      -- Match the version after the module path
-      local version = line:match(module_path .. "%s+v([0-9]+%.[0-9]+%.[0-9]+)")
-      if version then
-        return version
-      end
+    -- Look for lines containing the module path
+    for line in content:gmatch("[^\r\n]+") do
+        if line:find(module_path, 1, true) then
+            -- Extract version starting with 'v' followed by digits
+            -- Match the version after the module path
+            local version = line:match(module_path .. "%s+v([0-9]+%.[0-9]+%.[0-9]+)")
+            if version then
+                return version
+            end
+        end
     end
-  end
-  return nil
+    return nil
 end
 
 local function extract_go_version(content)
-  -- Prefer toolchain directive if present
-  local toolchain_version = content:match("toolchain%s+go([0-9][^\r\n]*)")
-  if toolchain_version then
-    return toolchain_version:match("^[^%s]+")
-  end
+    -- Prefer toolchain directive if present
+    local toolchain_version = content:match("toolchain%s+go([0-9][^\r\n]*)")
+    if toolchain_version then
+        return toolchain_version:match("^[^%s]+")
+    end
 
-  -- Fall back to go version line
-  local go_version = content:match("go%s+([0-9][^\r\n]*)")
-  if go_version then
-    return go_version:match("^[^%s]+")
-  end
+    -- Fall back to go version line
+    local go_version = content:match("go%s+([0-9][^\r\n]*)")
+    if go_version then
+        return go_version:match("^[^%s]+")
+    end
 
-  return nil
+    return nil
 end
 
 local function find_git_root()
-  -- Try to find .git directory by walking up the tree
-  local current_dir = "."
-  for _ = 1, 10 do -- Limit depth to avoid infinite loops
-    local git_dir = current_dir .. "/.git"
-    local f = io.open(git_dir .. "/config", "r")
-    if f then
-      f:close()
-      return current_dir
+    -- Try to find .git directory by walking up the tree
+    local current_dir = "."
+    for _ = 1, 10 do -- Limit depth to avoid infinite loops
+        local git_dir = current_dir .. "/.git"
+        local f = io.open(git_dir .. "/config", "r")
+        if f then
+            f:close()
+            return current_dir
+        end
+        current_dir = current_dir .. "/.."
     end
-    current_dir = current_dir .. "/.."
-  end
-  return nil
+    return nil
 end
 
 function PLUGIN:MiseEnv(ctx)
-  local module_path = "github.com/pulumi/pulumi/pkg/v3"
-  local go_mod_path = ctx.options.module_path or ""
-  local gomod = "go.mod"
+    local module_path = "github.com/pulumi/pulumi/pkg/v3"
+    local go_mod_path = ctx.options.module_path or ""
+    local gomod = "go.mod"
 
-  if go_mod_path ~= "" and go_mod_path ~= "." then
-    gomod = go_mod_path .. "/" .. gomod
-  end
-
-  -- First, try to read go.mod from the specified location (or current dir)
-  local content = read_file(gomod)
-
-  -- If not found and no custom path was specified, try the repo root
-  if not content and (go_mod_path == "" or go_mod_path == ".") then
-    local git_root = find_git_root()
-    if git_root then
-      content = read_file(git_root .. "/go.mod")
+    if go_mod_path ~= "" and go_mod_path ~= "." then
+        gomod = go_mod_path .. "/" .. gomod
     end
-  end
 
-  if not content then
-    -- No go.mod found, return empty (don't set variables, don't error)
-    return {}
-  end
+    -- First, try to read go.mod from the specified location (or current dir)
+    local content = read_file(gomod)
 
-  -- Extract both versions independently
-  local pulumi_version = extract_pulumi_version(content, module_path)
-  local go_version = extract_go_version(content)
+    -- If not found and no custom path was specified, try the repo root
+    if not content and (go_mod_path == "" or go_mod_path == ".") then
+        local git_root = find_git_root()
+        if git_root then
+            content = read_file(git_root .. "/go.mod")
+        end
+    end
 
-  -- Build result array with whatever we found
-  local result = {}
+    if not content then
+        -- No go.mod found, return empty (don't set variables, don't error)
+        return {}
+    end
 
-  if pulumi_version then
-    table.insert(result, { key = "PULUMI_VERSION_MISE", value = pulumi_version })
-  end
+    -- Extract both versions independently
+    local pulumi_version = extract_pulumi_version(content, module_path)
+    local go_version = extract_go_version(content)
 
-  if go_version then
-    table.insert(result, { key = "GO_VERSION_MISE", value = go_version })
-  end
+    -- Build result array with whatever we found
+    local result = {}
 
-  return result
+    if pulumi_version then
+        table.insert(result, { key = "PULUMI_VERSION_MISE", value = pulumi_version })
+    end
+
+    if go_version then
+        table.insert(result, { key = "GO_VERSION_MISE", value = go_version })
+    end
+
+    return result
 end
