@@ -68,7 +68,7 @@ jobs:
           working_directory: integration-cache
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
           experimental: true
-      - uses: pulumi/actions@c54507e63b48a03552ca491bbb4e8c4d89dda6cc # v6
+      - uses: pulumi/actions@v6 # v6.6.1
         with:
           pulumi-version: "3.215.0"
       - name: Verify Pulumi plugins
@@ -118,7 +118,7 @@ jobs:
           working_directory: integration-cache
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
           experimental: true
-      - uses: pulumi/actions@c54507e63b48a03552ca491bbb4e8c4d89dda6cc # v6
+      - uses: pulumi/actions@v6 # v6.6.1
         with:
           pulumi-version: "3.215.0"
       - name: Verify Pulumi plugins (cache restoration test)
