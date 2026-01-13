@@ -257,36 +257,9 @@ function PLUGIN:BackendInstall(ctx)
 
     -- Check if already installed (handles cache restoration)
     -- If mise location has the binary but PULUMI_HOME link/copy is missing, just recreate it
-    local already_exists = false
-    if is_windows() then
-        local normalized_path = mise_bin_path:gsub("/", "\\")
-        -- First check if directory exists
-        local dir_exists = pcall(function()
-            windows_exec('dir "' .. normalized_path .. '"')
-        end)
-        if dir_exists then
-            -- Check if the specific binary exists
-            -- Note: io.popen doesn't reliably return exit codes on Windows, so check output content
-            local binary_name = strings.join({ "pulumi", type, package_name }, "-")
-            local binary_path = normalized_path .. "\\" .. binary_name .. ".exe"
-            local success, output = pcall(function()
-                return windows_exec('dir "' .. binary_path .. '"')
-            end)
-            -- Check output content since exit codes aren't reliable
-            already_exists = success
-                and output
-                and not output:match("File Not Found")
-                and not output:match("cannot find")
-        end
-    else
-        already_exists = pcall(function()
-            cmd.exec("test -f " .. mise_bin_path .. "/*")
-        end)
-    end
-
-    if already_exists then
+    if pulumi_home_lib.check_mise_cache_exists(mise_bin_path, tool, version) then
         -- Binary exists (cache restored), just ensure PULUMI_HOME link/copy
-        pulumi_home_lib.install_to_pulumi_home(mise_bin_path, tool, version)
+        pulumi_home_lib.ensure_pulumi_home_link(mise_bin_path, tool, version)
         return {}
     end
 

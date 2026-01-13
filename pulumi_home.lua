@@ -186,6 +186,50 @@ function M.check_pulumi_home_exists(mise_bin_path, tool, version)
     end
 end
 
+-- Check if binary exists in mise cache
+-- Returns true if the plugin binary is already installed in mise's location
+function M.check_mise_cache_exists(mise_bin_path, tool, version)
+    local file = require("file")
+    local cmd = require("cmd")
+    local strings = require("strings")
+
+    -- Parse tool info
+    local tool_info, err = parse_tool_info(tool)
+    if not tool_info then
+        return false
+    end
+
+    local kind = tool_info.kind
+    local package_name = tool_info.package_name
+
+    -- Build binary name
+    local binary_name = strings.join({ "pulumi", kind, package_name }, "-")
+    if M.is_windows() then
+        binary_name = binary_name .. ".exe"
+    end
+
+    local binary_path = file.join_path(mise_bin_path, binary_name)
+
+    -- Check if binary exists
+    if M.is_windows() then
+        local normalized_path = binary_path:gsub("/", "\\")
+        return pcall(function()
+            local handle = io.popen('dir "' .. normalized_path .. '" 2>NUL')
+            local output = handle:read("*a")
+            handle:close()
+            -- Check that output is non-empty and contains the file
+            if output and output ~= "" and not output:match("File Not Found") and not output:match("cannot find") then
+                return true
+            end
+            error("not found")
+        end)
+    else
+        return pcall(function()
+            cmd.exec("test -f " .. binary_path)
+        end)
+    end
+end
+
 -- Ensure symlink/copy exists in PULUMI_HOME (idempotent)
 -- Only creates the link if it doesn't already exist
 function M.ensure_pulumi_home_link(mise_bin_path, tool, version)

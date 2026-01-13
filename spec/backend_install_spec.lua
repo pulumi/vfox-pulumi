@@ -30,6 +30,7 @@ describe("backend_install", function()
         original_modules.cmd = package.loaded.cmd
         original_modules.http = package.loaded.http
         original_modules.archiver = package.loaded.archiver
+        original_modules.pulumi_home = package.loaded.pulumi_home
 
         package.loaded.file = {
             join_path = function(...)
@@ -73,6 +74,72 @@ describe("backend_install", function()
             end,
         }
 
+        -- Mock pulumi_home module
+        package.loaded.pulumi_home = {
+            is_windows = function()
+                local os_type = _G.RUNTIME and _G.RUNTIME.osType or "Darwin"
+                return os_type == "Windows" or os_type == "windows" or os_type == "WINDOWS"
+            end,
+            check_mise_cache_exists = function(mise_bin_path, tool, version)
+                -- Default: return false (cache doesn't exist, need to download)
+                -- This simulates the old behavior where test -f .../bin/* would fail
+                return false
+            end,
+            ensure_pulumi_home_link = function(mise_bin_path, tool, version)
+                -- Call install_to_pulumi_home (matching real behavior)
+                package.loaded.pulumi_home.install_to_pulumi_home(mise_bin_path, tool, version)
+            end,
+            install_to_pulumi_home = function(mise_bin_path, tool, version)
+                -- Generate realistic commands based on tool name and platform
+                local strings = package.loaded.strings
+                local file = package.loaded.file
+                local is_win = package.loaded.pulumi_home.is_windows()
+
+                -- Parse tool name
+                local owner, repo = tool:match("^([^/%s]+)/([^/%s]+)$")
+                if not owner or not repo then return end
+
+                -- Determine plugin type
+                local kind, package_name
+                if strings.has_prefix(repo, "pulumi-converter") then
+                    kind = "converter"
+                    package_name = repo:gsub("^pulumi%-converter%-", "")
+                elseif strings.has_prefix(repo, "pulumi-tool") then
+                    kind = "tool"
+                    package_name = repo:gsub("^pulumi%-tool%-", "")
+                else
+                    kind = "resource"
+                    package_name = repo:gsub("^pulumi%-", "")
+                end
+
+                -- Get PULUMI_HOME
+                local pulumi_home
+                if env_values.PULUMI_HOME and env_values.PULUMI_HOME ~= false then
+                    pulumi_home = env_values.PULUMI_HOME
+                elseif is_win then
+                    pulumi_home = (env_values.USERPROFILE or "C:/Users/test") .. "/.pulumi"
+                else
+                    pulumi_home = (env_values.HOME or "/home/test") .. "/.pulumi"
+                end
+                local plugin_dir_name = strings.join({ kind, package_name, "v" .. version }, "-")
+                local binary_name = strings.join({ "pulumi", kind, package_name }, "-")
+                if is_win then binary_name = binary_name .. ".exe" end
+
+                local plugin_dir = file.join_path(pulumi_home, "plugins", plugin_dir_name)
+                local source_binary = file.join_path(mise_bin_path, binary_name)
+                local target_binary = file.join_path(plugin_dir, binary_name)
+
+                -- Generate commands
+                if is_win then
+                    table.insert(cmd_exec_calls, string.format('copy /Y "%s" "%s"', source_binary, target_binary))
+                else
+                    table.insert(cmd_exec_calls, "rm -rf " .. plugin_dir)
+                    table.insert(cmd_exec_calls, "mkdir -p " .. plugin_dir)
+                    table.insert(cmd_exec_calls, string.format("ln -s %s %s", source_binary, target_binary))
+                end
+            end,
+        }
+
         getenv_stub = stub(os, "getenv", function(name)
             if env_values[name] ~= nil then
                 return env_values[name]
@@ -92,6 +159,7 @@ describe("backend_install", function()
         package.loaded.cmd = original_modules.cmd
         package.loaded.http = original_modules.http
         package.loaded.archiver = original_modules.archiver
+        package.loaded.pulumi_home = original_modules.pulumi_home
 
         if getenv_stub then
             getenv_stub:revert()
@@ -308,15 +376,22 @@ describe("backend_install", function()
     it("handles cache restoration by recreating PULUMI_HOME symlink", function()
         env_values.HOME = "/home/test"
 
-        -- Make test -f succeed (files exist)
-        package.loaded.cmd = {
-            exec = function(command)
-                table.insert(cmd_exec_calls, command)
-                if command:match("^test %-f") then
-                    -- Don't error, indicating files exist
-                    return ""
-                end
-                return ""
+        -- Mock pulumi_home to simulate cache exists
+        package.loaded.pulumi_home = {
+            is_windows = function()
+                return false
+            end,
+            check_mise_cache_exists = function(mise_bin_path, tool, version)
+                -- Return true to indicate cache exists
+                return true
+            end,
+            ensure_pulumi_home_link = function(mise_bin_path, tool, version)
+                -- Mock implementation that records calls
+                table.insert(cmd_exec_calls, "mkdir -p /home/test/.pulumi/plugins/resource-aws-v6.0.0")
+                table.insert(
+                    cmd_exec_calls,
+                    "ln -s /tmp/install/bin/pulumi-resource-aws /home/test/.pulumi/plugins/resource-aws-v6.0.0/pulumi-resource-aws"
+                )
             end,
         }
         load_subject()
