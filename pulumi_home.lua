@@ -135,11 +135,15 @@ function M.install_to_pulumi_home(mise_bin_path, tool, version)
             -- List what IS in the bin directory
             local bin_dir = normalized_source:match("(.+)\\[^\\]+$")
             print("[DEBUG Windows] Listing bin directory: " .. bin_dir)
-            local dir_listing = pcall(function()
+            local dir_listing_ok, dir_listing_err = pcall(function()
                 local output = windows_exec('dir "' .. bin_dir .. '"')
                 print("[DEBUG Windows] Contents:\n" .. output)
             end)
-            error(string.format("Source binary not found: %s (tried to list dir but failed)", normalized_source))
+            if dir_listing_ok then
+                error(string.format("Source binary not found: %s", normalized_source))
+            else
+                error(string.format("Source binary not found: %s (also failed to list directory: %s)", normalized_source, tostring(dir_listing_err)))
+            end
         end
 
         windows_exec(string.format('copy /Y "%s" "%s"', normalized_source, normalized_target))
@@ -163,6 +167,7 @@ function M.check_pulumi_home_exists(mise_bin_path, tool, version)
     -- Parse tool info
     local tool_info, err = parse_tool_info(tool)
     if not tool_info then
+        print("[DEBUG check_pulumi_home_exists] Could not parse tool: " .. tostring(err))
         return false
     end
 
@@ -188,22 +193,30 @@ function M.check_pulumi_home_exists(mise_bin_path, tool, version)
     local plugin_dir = file.join_path(pulumi_home, "plugins", plugin_dir_name)
     local target_binary = file.join_path(plugin_dir, binary_name)
 
+    print("[DEBUG check_pulumi_home_exists] Checking: " .. target_binary)
+
     -- Check if target exists
     if M.is_windows() then
         local normalized_target = target_binary:gsub("/", "\\")
-        return pcall(function()
+        print("[DEBUG check_pulumi_home_exists] Windows normalized: " .. normalized_target)
+        local exists = pcall(function()
             local handle = io.popen('dir "' .. normalized_target .. '" 2>NUL')
             local output = handle:read("*a")
             handle:close()
+            print("[DEBUG check_pulumi_home_exists] dir output: " .. output)
             if output and not output:match("File Not Found") and not output:match("cannot find") then
                 return true
             end
             error("not found")
         end)
+        print("[DEBUG check_pulumi_home_exists] Windows result: " .. tostring(exists))
+        return exists
     else
-        return pcall(function()
+        local exists = pcall(function()
             cmd.exec("test -f " .. target_binary)
         end)
+        print("[DEBUG check_pulumi_home_exists] Unix result: " .. tostring(exists))
+        return exists
     end
 end
 

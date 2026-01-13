@@ -369,8 +369,9 @@ describe("backend_install", function()
             table.insert(cmd_exec_calls, clean_cmd)
 
             -- Simulate cache miss for specific binary file check
-            -- Only match dir commands checking for the binary, not copy commands
-            if command:match("^dir.*pulumi%-resource%-[%w%-]+%.exe") then
+            -- Only match dir commands checking for cached binary, not source existence checks
+            -- (source checks include >NUL, cache checks don't)
+            if command:match("^dir.*pulumi%-resource%-[%w%-]+%.exe") and not command:match(">NUL") then
                 return {
                     read = function() return "" end,
                     close = function() return nil, "exit", 1 end  -- file not found
