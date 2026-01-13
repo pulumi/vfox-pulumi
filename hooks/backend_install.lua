@@ -4,10 +4,12 @@
 
 -- Helper Functions
 
--- Check if running on Windows (case-insensitive)
-function is_windows()
-    local os_type = RUNTIME.osType
-    return os_type == "Windows" or os_type == "windows" or os_type == "WINDOWS"
+-- Load shared PULUMI_HOME management module
+local pulumi_home_lib = require("pulumi_home")
+
+-- Convenience alias for is_windows check
+local function is_windows()
+    return pulumi_home_lib.is_windows()
 end
 
 -- Execute command on Windows using io.popen (cmd.exec doesn't work in mise on Windows)
@@ -211,64 +213,6 @@ function install_to_mise(extracted_path, install_path)
     end
 end
 
--- Install to PULUMI_HOME using platform-specific approach
--- Unix: Symlink (saves disk space)
--- Windows: Copy (symlinks need admin/Developer Mode)
-function install_to_pulumi_home(mise_bin_path, kind, name, version)
-    local file = require("file")
-    local cmd = require("cmd")
-    local strings = require("strings")
-
-    local pulumi_home = os.getenv("PULUMI_HOME")
-    if not pulumi_home or pulumi_home == "" then
-        if is_windows() then
-            pulumi_home = file.join_path(os.getenv("USERPROFILE"), ".pulumi")
-        else
-            pulumi_home = file.join_path(os.getenv("HOME"), ".pulumi")
-        end
-    end
-
-    -- Build paths: PULUMI_HOME/plugins/<type>-<name>-v<version>/pulumi-<type>-<name>
-    local plugin_dir_name = strings.join({ kind, name, "v" .. version }, "-")
-    local binary_name = strings.join({ "pulumi", kind, name }, "-")
-    -- On Windows, add .exe extension
-    if is_windows() then
-        binary_name = binary_name .. ".exe"
-    end
-    local plugin_dir = file.join_path(pulumi_home, "plugins", plugin_dir_name)
-    local plugins_dir = file.join_path(pulumi_home, "plugins")
-    local source_binary = file.join_path(mise_bin_path, binary_name)
-    local target_binary = file.join_path(plugin_dir, binary_name)
-
-    -- Platform-specific installation
-    if is_windows() then
-        -- Windows: Copy binary
-        -- Normalize paths to backslashes only
-        local normalized_plugin_dir = plugin_dir:gsub("/", "\\")
-        local normalized_plugins_dir = plugins_dir:gsub("/", "\\")
-        local normalized_source = source_binary:gsub("/", "\\")
-        local normalized_target = target_binary:gsub("/", "\\")
-
-        -- Remove old plugin dir if exists (ignore errors)
-        pcall(function()
-            windows_exec('rmdir /S /Q "' .. normalized_plugin_dir .. '"')
-        end)
-        -- Create parent directory (might already exist from other plugins)
-        pcall(function()
-            windows_exec('mkdir "' .. normalized_plugins_dir .. '"')
-        end)
-        -- Create plugin directory
-        windows_exec('mkdir "' .. normalized_plugin_dir .. '"')
-
-        windows_exec(string.format('copy /Y "%s" "%s"', normalized_source, normalized_target))
-    else
-        -- Unix: Symlink binary (saves disk space)
-        cmd.exec("rm -rf " .. plugin_dir)
-        cmd.exec("mkdir -p " .. plugin_dir)
-        cmd.exec(string.format("ln -s %s %s", source_binary, target_binary))
-    end
-end
-
 -- Main installation function
 function PLUGIN:BackendInstall(ctx)
     local file = require("file")
@@ -342,7 +286,7 @@ function PLUGIN:BackendInstall(ctx)
 
     if already_exists then
         -- Binary exists (cache restored), just ensure PULUMI_HOME link/copy
-        install_to_pulumi_home(mise_bin_path, type, package_name, version)
+        pulumi_home_lib.install_to_pulumi_home(mise_bin_path, tool, version)
         return {}
     end
 
@@ -435,7 +379,7 @@ function PLUGIN:BackendInstall(ctx)
 
     -- Install to PULUMI_HOME (symlink on Unix, copy on Windows)
     local pulumi_success, pulumi_err = pcall(function()
-        install_to_pulumi_home(mise_bin_path, type, package_name, version)
+        pulumi_home_lib.install_to_pulumi_home(mise_bin_path, tool, version)
     end)
     if not pulumi_success then
         if is_windows() then
