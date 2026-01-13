@@ -14,9 +14,25 @@ function PLUGIN:BackendExecEnv(ctx)
     -- Basic PATH setup
     local bin_path = file.join_path(install_path, "bin")
 
-    -- Ensure PULUMI_HOME symlink/copy exists (handles cache restoration)
-    -- This is lightweight - only creates link if missing
-    pulumi_home_lib.ensure_pulumi_home_link(bin_path, tool, version)
+    -- Ensure PULUMI_HOME symlink/copy exists
+    -- This runs during mise install even when cache is restored,
+    -- ensuring plugins are always visible to pulumi plugin ls
+    print(
+        "[DEBUG BackendExecEnv] Called with tool="
+            .. tostring(tool)
+            .. ", version="
+            .. tostring(version)
+            .. ", bin_path="
+            .. tostring(bin_path)
+    )
+    local success, err = pcall(function()
+        pulumi_home_lib.ensure_pulumi_home_link(bin_path, tool, version)
+    end)
+    if not success then
+        print("[DEBUG BackendExecEnv] ERROR: " .. tostring(err))
+    else
+        print("[DEBUG BackendExecEnv] Successfully ensured PULUMI_HOME link")
+    end
 
     -- Ensure the mise-managed plugin path wins over binaries from the ambient PATH.
     -- See docs/adr/0001-path-management.md for the design rationale.

@@ -57,6 +57,38 @@ local function find_git_root()
 end
 
 function PLUGIN:MiseEnv(ctx)
+    -- Ensure PULUMI_HOME symlinks exist for ALL installed pulumi plugins
+    -- This runs when mise env hook is triggered (shell activation, directory change, config change)
+    -- This handles cache restoration automatically - if mise installs exist but PULUMI_HOME is empty,
+    -- the symlinks will be created here
+    local pulumi_home_lib = require("pulumi_home")
+
+    -- Get all installed pulumi: tools from mise
+    local handle = io.popen("mise list 2>/dev/null | grep '^pulumi:'")
+    if handle then
+        for line in handle:lines() do
+            local tool, version = line:match("^(pulumi:[^%s]+)%s+([^%s]+)")
+            if tool and version then
+                -- Get install path for this tool
+                local where_handle = io.popen("mise where " .. tool .. " 2>/dev/null")
+                if where_handle then
+                    local install_path = where_handle:read("*l")
+                    where_handle:close()
+                    if install_path and install_path ~= "" then
+                        local bin_path = install_path .. "/bin"
+                        local tool_name = tool:gsub("^pulumi:", "")
+                        -- Silently ensure symlink exists (pcall to avoid errors stopping other env setup)
+                        pcall(function()
+                            pulumi_home_lib.ensure_pulumi_home_link(bin_path, tool_name, version)
+                        end)
+                    end
+                end
+            end
+        end
+        handle:close()
+    end
+
+    -- Original go.mod parsing logic
     local module_path = "github.com/pulumi/pulumi/pkg/v3"
     local go_mod_path = ctx.options.module_path or ""
     local gomod = "go.mod"

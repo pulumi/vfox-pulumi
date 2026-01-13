@@ -117,7 +117,7 @@ jobs:
           working_directory: integration-cache
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
           experimental: true
-      - name: Verify Pulumi plugins
+      - name: Verify Pulumi plugins (cache restoration test)
         shell: bash
         run: |
           cd integration-cache
