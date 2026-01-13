@@ -68,6 +68,8 @@ jobs:
           working_directory: integration-cache
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
           experimental: true
+      # We install pulumi outside of mise because it shouldn't be required in
+      # order to install provider plugins.
       - uses: pulumi/actions@v6 # v6.6.1
         with:
           pulumi-version: "3.215.0"
@@ -118,6 +120,8 @@ jobs:
           working_directory: integration-cache
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
           experimental: true
+      # We install pulumi outside of mise because it shouldn't be required in
+      # order to install provider plugins.
       - uses: pulumi/actions@v6 # v6.6.1
         with:
           pulumi-version: "3.215.0"
