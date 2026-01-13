@@ -72,7 +72,7 @@ jobs:
       # order to install provider plugins.
       - uses: pulumi/actions@v6.6.1
         with:
-          pulumi-version: "v3.215.0"
+          pulumi-version: "v3.214.1"
       - name: Verify Pulumi plugins
         shell: bash
         run: |
@@ -124,7 +124,7 @@ jobs:
       # order to install provider plugins.
       - uses: pulumi/actions@v6.6.1
         with:
-          pulumi-version: "v3.215.0"
+          pulumi-version: "v3.214.1"
       - name: Verify Pulumi plugins (cache restoration test)
         shell: bash
         run: |
