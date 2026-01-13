@@ -70,9 +70,9 @@ jobs:
           experimental: true
       # We install pulumi outside of mise because it shouldn't be required in
       # order to install provider plugins.
-      - uses: pulumi/actions@v6 # v6.6.1
+      - uses: pulumi/actions@v6.6.1
         with:
-          pulumi-version: "3.215.0"
+          pulumi-version: "v3.215.0"
       - name: Verify Pulumi plugins
         shell: bash
         run: |
@@ -122,9 +122,9 @@ jobs:
           experimental: true
       # We install pulumi outside of mise because it shouldn't be required in
       # order to install provider plugins.
-      - uses: pulumi/actions@v6 # v6.6.1
+      - uses: pulumi/actions@v6.6.1
         with:
-          pulumi-version: "3.215.0"
+          pulumi-version: "v3.215.0"
       - name: Verify Pulumi plugins (cache restoration test)
         shell: bash
         run: |
