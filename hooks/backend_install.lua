@@ -10,54 +10,56 @@ function is_windows()
     return os_type == "Windows" or os_type == "windows" or os_type == "WINDOWS"
 end
 
+-- Execute command on Windows using io.popen (cmd.exec doesn't work in mise on Windows)
+function windows_exec(command)
+    local handle = io.popen(command .. " 2>&1")
+    local output = handle:read("*a")
+    local success, exit_type, exit_code = handle:close()
+
+    if not success then
+        error(string.format("Command failed: %s\nOutput: %s", command, output))
+    end
+
+    return output
+end
+
 -- Create a temporary directory with a unique name
 function create_temp_dir()
     local cmd = require("cmd")
 
     if is_windows() then
-        -- Use TEMP environment variable directly (already points to the temp directory)
-        local base_temp = os.getenv("TEMP")
+        -- Use RUNNER_TEMP (GitHub Actions) or TEMP/TMP as fallback
+        local base_temp = os.getenv("RUNNER_TEMP") or os.getenv("TEMP") or os.getenv("TMP")
         if not base_temp or base_temp == "" then
-            base_temp = os.getenv("TMP")
-        end
-        if not base_temp or base_temp == "" then
-            error("Neither TEMP nor TMP environment variables are set")
+            error("No temp directory environment variable set (tried RUNNER_TEMP, TEMP, TMP)")
         end
 
-        -- Normalize base_temp to use forward slashes internally
+        -- Normalize to forward slashes internally
         base_temp = base_temp:gsub("\\", "/")
-        print("DEBUG: base_temp (normalized): " .. base_temp)
 
         -- Generate a unique name using os.tmpname()
         local tmp_name_full = os.tmpname()
-        print("DEBUG: os.tmpname() returned: " .. tmp_name_full)
 
         -- os.tmpname() creates a file, so remove it
         os.remove(tmp_name_full)
 
         -- Extract just the basename (e.g., "s2mk.0") and replace dots with underscores
         local tmp_name = tmp_name_full:match("[^/\\]+$")
-        print("DEBUG: Extracted basename: " .. tmp_name)
 
         -- Replace dots with underscores to make it a valid directory name (e.g., "s2mk.0" -> "s2mk_0")
         tmp_name = tmp_name:gsub("%.", "_")
-        print("DEBUG: After replacing dots: " .. tmp_name)
 
         -- Build the directory path with forward slashes internally
         local tmp_dir_name = base_temp .. "/lua_temp_" .. tmp_name
-        print("DEBUG: Temp directory path (forward slashes): " .. tmp_dir_name)
 
         -- Normalize to backslashes for Windows mkdir (same pattern as rest of file)
         local normalized_temp = tmp_dir_name:gsub("/", "\\")
-        print("DEBUG: Temp directory path (backslashes): " .. normalized_temp)
 
         local mkdir_cmd = 'mkdir "' .. normalized_temp .. '"'
-        print("DEBUG: Executing command: " .. mkdir_cmd)
 
-        cmd.exec(mkdir_cmd)
-        print("DEBUG: mkdir command completed")
+        windows_exec(mkdir_cmd)
 
-        return tmp_dir_name  -- Return with forward slashes for consistency
+        return tmp_dir_name -- Return with forward slashes for consistency
     else
         -- On Unix, use cmd.exec with mkdir -p
         local temp_path = os.tmpname()
@@ -182,7 +184,7 @@ function extract_plugin(tarball_path, destination)
     if is_windows() then
         -- Normalize to backslashes only
         local normalized_dest = destination:gsub("/", "\\")
-        cmd.exec('mkdir "' .. normalized_dest .. '"')
+        windows_exec('mkdir "' .. normalized_dest .. '"')
     else
         cmd.exec("mkdir -p " .. destination)
     end
@@ -199,8 +201,10 @@ function install_to_mise(extracted_path, install_path)
         -- Normalize to backslashes only
         local normalized_bin = bin_path:gsub("/", "\\")
         local normalized_extracted = extracted_path:gsub("/", "\\")
-        cmd.exec('mkdir "' .. normalized_bin .. '"')
-        cmd.exec(string.format('xcopy /E /I /Y "%s" "%s"', normalized_extracted, normalized_bin))
+
+        windows_exec('mkdir "' .. normalized_bin .. '"')
+        -- Copy contents with \* (like Unix /*)
+        windows_exec(string.format('xcopy /E /I /Y "%s\\*" "%s"', normalized_extracted, normalized_bin))
     else
         cmd.exec("mkdir -p " .. bin_path)
         cmd.exec("cp -r " .. extracted_path .. "/* " .. bin_path)
@@ -227,6 +231,10 @@ function install_to_pulumi_home(mise_bin_path, kind, name, version)
     -- Build paths: PULUMI_HOME/plugins/<type>-<name>-v<version>/pulumi-<type>-<name>
     local plugin_dir_name = strings.join({ kind, name, "v" .. version }, "-")
     local binary_name = strings.join({ "pulumi", kind, name }, "-")
+    -- On Windows, add .exe extension
+    if is_windows() then
+        binary_name = binary_name .. ".exe"
+    end
     local plugin_dir = file.join_path(pulumi_home, "plugins", plugin_dir_name)
     local plugins_dir = file.join_path(pulumi_home, "plugins")
     local source_binary = file.join_path(mise_bin_path, binary_name)
@@ -242,12 +250,17 @@ function install_to_pulumi_home(mise_bin_path, kind, name, version)
         local normalized_target = target_binary:gsub("/", "\\")
 
         -- Remove old plugin dir if exists (ignore errors)
-        pcall(function() cmd.exec('rmdir /S /Q "' .. normalized_plugin_dir .. '"') end)
+        pcall(function()
+            windows_exec('rmdir /S /Q "' .. normalized_plugin_dir .. '"')
+        end)
         -- Create parent directory (might already exist from other plugins)
-        pcall(function() cmd.exec('mkdir "' .. normalized_plugins_dir .. '"') end)
+        pcall(function()
+            windows_exec('mkdir "' .. normalized_plugins_dir .. '"')
+        end)
         -- Create plugin directory
-        cmd.exec('mkdir "' .. normalized_plugin_dir .. '"')
-        cmd.exec(string.format('copy /Y "%s" "%s"', normalized_source, normalized_target))
+        windows_exec('mkdir "' .. normalized_plugin_dir .. '"')
+
+        windows_exec(string.format('copy /Y "%s" "%s"', normalized_source, normalized_target))
     else
         -- Unix: Symlink binary (saves disk space)
         cmd.exec("rm -rf " .. plugin_dir)
@@ -300,15 +313,32 @@ function PLUGIN:BackendInstall(ctx)
 
     -- Check if already installed (handles cache restoration)
     -- If mise location has the binary but PULUMI_HOME link/copy is missing, just recreate it
-    local already_exists = pcall(function()
-        -- Check if any files exist in mise bin path
-        if is_windows() then
-            local normalized_path = mise_bin_path:gsub("/", "\\")
-            cmd.exec('dir "' .. normalized_path .. '" /A-D 2>NUL | findstr /R /C:"pulumi-"')
-        else
-            cmd.exec("test -f " .. mise_bin_path .. "/*")
+    local already_exists = false
+    if is_windows() then
+        local normalized_path = mise_bin_path:gsub("/", "\\")
+        -- First check if directory exists
+        local dir_exists = pcall(function()
+            windows_exec('dir "' .. normalized_path .. '"')
+        end)
+        if dir_exists then
+            -- Check if the specific binary exists
+            -- Note: io.popen doesn't reliably return exit codes on Windows, so check output content
+            local binary_name = strings.join({ "pulumi", type, package_name }, "-")
+            local binary_path = normalized_path .. "\\" .. binary_name .. ".exe"
+            local success, output = pcall(function()
+                return windows_exec('dir "' .. binary_path .. '"')
+            end)
+            -- Check output content since exit codes aren't reliable
+            already_exists = success
+                and output
+                and not output:match("File Not Found")
+                and not output:match("cannot find")
         end
-    end)
+    else
+        already_exists = pcall(function()
+            cmd.exec("test -f " .. mise_bin_path .. "/*")
+        end)
+    end
 
     if already_exists then
         -- Binary exists (cache restored), just ensure PULUMI_HOME link/copy
@@ -323,7 +353,7 @@ function PLUGIN:BackendInstall(ctx)
     local dir_check_success = pcall(function()
         if is_windows() then
             local normalized_temp = temp_dir:gsub("/", "\\")
-            cmd.exec('dir "' .. normalized_temp .. '" >NUL 2>&1')
+            windows_exec('dir "' .. normalized_temp .. '" >NUL 2>&1')
         else
             cmd.exec("test -d " .. temp_dir)
         end
@@ -341,7 +371,9 @@ function PLUGIN:BackendInstall(ctx)
     if not success then
         if is_windows() then
             local normalized_temp = temp_dir:gsub("/", "\\")
-            pcall(function() cmd.exec('rmdir /S /Q "' .. normalized_temp .. '"') end)
+            pcall(function()
+                windows_exec('rmdir /S /Q "' .. normalized_temp .. '"')
+            end)
         else
             cmd.exec("rm -rf " .. temp_dir)
         end
@@ -352,7 +384,7 @@ function PLUGIN:BackendInstall(ctx)
     local file_check_success = pcall(function()
         if is_windows() then
             local normalized_tarball = tarball_path:gsub("/", "\\")
-            cmd.exec('dir "' .. normalized_tarball .. '" >NUL 2>&1')
+            windows_exec('dir "' .. normalized_tarball .. '" >NUL 2>&1')
         else
             cmd.exec("test -f " .. tarball_path)
         end
@@ -360,7 +392,9 @@ function PLUGIN:BackendInstall(ctx)
     if not file_check_success then
         if is_windows() then
             local normalized_temp = temp_dir:gsub("/", "\\")
-            pcall(function() cmd.exec('rmdir /S /Q "' .. normalized_temp .. '"') end)
+            pcall(function()
+                windows_exec('rmdir /S /Q "' .. normalized_temp .. '"')
+            end)
         else
             cmd.exec("rm -rf " .. temp_dir)
         end
@@ -374,7 +408,9 @@ function PLUGIN:BackendInstall(ctx)
     if not extract_success then
         if is_windows() then
             local normalized_temp = temp_dir:gsub("/", "\\")
-            pcall(function() cmd.exec('rmdir /S /Q "' .. normalized_temp .. '"') end)
+            pcall(function()
+                windows_exec('rmdir /S /Q "' .. normalized_temp .. '"')
+            end)
         else
             cmd.exec("rm -rf " .. temp_dir)
         end
@@ -388,7 +424,9 @@ function PLUGIN:BackendInstall(ctx)
     if not mise_success then
         if is_windows() then
             local normalized_temp = temp_dir:gsub("/", "\\")
-            pcall(function() cmd.exec('rmdir /S /Q "' .. normalized_temp .. '"') end)
+            pcall(function()
+                windows_exec('rmdir /S /Q "' .. normalized_temp .. '"')
+            end)
         else
             cmd.exec("rm -rf " .. temp_dir)
         end
@@ -402,7 +440,9 @@ function PLUGIN:BackendInstall(ctx)
     if not pulumi_success then
         if is_windows() then
             local normalized_temp = temp_dir:gsub("/", "\\")
-            pcall(function() cmd.exec('rmdir /S /Q "' .. normalized_temp .. '"') end)
+            pcall(function()
+                windows_exec('rmdir /S /Q "' .. normalized_temp .. '"')
+            end)
         else
             cmd.exec("rm -rf " .. temp_dir)
         end
@@ -412,7 +452,9 @@ function PLUGIN:BackendInstall(ctx)
     -- Clean up
     if is_windows() then
         local forward_temp = temp_dir:gsub("\\", "/")
-        pcall(function() cmd.exec('rmdir /S /Q "' .. forward_temp .. '"') end)
+        pcall(function()
+            windows_exec('rmdir /S /Q "' .. forward_temp .. '"')
+        end)
     else
         cmd.exec("rm -rf " .. temp_dir)
     end

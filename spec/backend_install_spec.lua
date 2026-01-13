@@ -361,6 +361,29 @@ describe("backend_install", function()
         cmd_exec_calls = {}
         archiver_decompress_calls = {}
 
+        -- Mock io.popen for Windows command execution
+        local original_io_popen = io.popen
+        io.popen = function(command)
+            -- Strip the 2>&1 redirect for cleaner command logging
+            local clean_cmd = command:gsub(" 2>&1$", "")
+            table.insert(cmd_exec_calls, clean_cmd)
+
+            -- Simulate cache miss for specific binary file check
+            -- Only match dir commands checking for the binary, not copy commands
+            if command:match("^dir.*pulumi%-resource%-[%w%-]+%.exe") then
+                return {
+                    read = function() return "" end,
+                    close = function() return nil, "exit", 1 end  -- file not found
+                }
+            end
+
+            -- Return success for other commands (mkdir, xcopy, copy, etc.)
+            return {
+                read = function() return "" end,
+                close = function() return true, "exit", 0 end
+            }
+        end
+
         -- Re-setup mocks
         package.loaded.http = {
             download_file = function(opts, path)
@@ -435,6 +458,9 @@ describe("backend_install", function()
 
         assert.is_true(found_rmdir or found_mkdir_windows, "Should use Windows mkdir command")
         assert.is_true(found_copy, "Should use copy instead of ln")
+
+        -- Restore original io.popen
+        io.popen = original_io_popen
     end)
 
     it("raises when download fails from both sources", function()
