@@ -204,7 +204,8 @@ function M.check_pulumi_home_exists(mise_bin_path, tool, version)
             local output = handle:read("*a")
             handle:close()
             print("[DEBUG check_pulumi_home_exists] dir output: " .. output)
-            if output and not output:match("File Not Found") and not output:match("cannot find") then
+            -- Check that output is non-empty and contains the file (not just "File Not Found")
+            if output and output ~= "" and not output:match("File Not Found") and not output:match("cannot find") then
                 return true
             end
             error("not found")
