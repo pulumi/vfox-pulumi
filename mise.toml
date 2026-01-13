@@ -1,17 +1,19 @@
 [env]
 MISE_USE_VERSIONS_HOST = "0"
+ASDF_LUA_LUAROCKS_VERSION = "3.12.2" # https://github.com/jdx/mise-tool-plugin-template/issues/6
 _.path = { path = ["lua_modules/bin"], tools = true }
 
 [tools]
 actionlint = "latest"
 hk = "latest"
-lua = "5.4"
+lua = "5.4.8"
 pkl = "latest"
 pulumi = "latest"
 stylua = "latest"
 
-[hooks]
-postinstall = "luarocks install --only-deps vfox-pulumi-dev-1.rockspec"
+[tasks.install-deps]
+description = "Install Lua dependencies"
+run = "bash scripts/install-deps.sh"
 
 [tasks.format]
 description = "Format Lua scripts"
@@ -23,11 +25,12 @@ run = "hk check"
 
 [tasks.unit]
 description = "Run lua unit tests"
+depends = ["install-deps"]
 run = "busted -v"
 
 [tasks.ci]
 description = "Run all CI checks"
-depends = ["lint", "unit", "test"]
+depends = ["lint", "unit"]
 
 [settings]
 experimental = true
