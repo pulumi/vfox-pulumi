@@ -125,10 +125,19 @@ end
 function try_pulumi_cdn_download(url, download_path)
     local http = require("http")
 
-    -- http.download_file returns nil on success, error string on failure
-    local err = http.download_file({ url = url }, download_path)
+    -- http.download_file may throw exceptions on HTTP errors (like 403)
+    -- Use pcall to catch these and allow fallback to GitHub
+    local success, err = pcall(function()
+        return http.download_file({ url = url }, download_path)
+    end)
+
+    if not success then
+        -- Exception was thrown (e.g., HTTP 403)
+        return false, tostring(err)
+    end
 
     if err ~= nil then
+        -- Error string was returned
         return false, err
     end
 
