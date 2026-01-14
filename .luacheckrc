@@ -39,9 +39,15 @@ ignore = {
     "631", -- line is too long
     "212", -- unused argument (ctx, self often unused in simple hooks)
     "211", -- unused variable (template examples may have unused vars)
+    "542", -- empty if branch (intentional for optional error handling)
     "611", -- line contains only whitespace
     "612", -- trailing whitespace in comment
     "621", -- trailing whitespace
+}
+
+-- Spec files need to mock globals
+files["spec/**/*.lua"] = {
+    ignore = { "122" }, -- setting read-only field of global (needed for mocking in tests)
 }
 
 -- Allow trailing whitespace (can be auto-fixed)
