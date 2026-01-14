@@ -18,9 +18,24 @@ function M.ensure_cache_dir()
 
     -- Create directory if it doesn't exist
     if not file.exists(cache_dir) then
-        local ok, err = file.create_dir_all(cache_dir)
-        if not ok then
-            error("Failed to create cache directory: " .. (err or "unknown error"))
+        local cmd = require("cmd")
+        -- Use mkdir -p for recursive directory creation (works on Unix/macOS/Linux)
+        -- Windows cmd.exe also supports mkdir with /p flag via cmd.exec
+        local is_windows = package.config:sub(1, 1) == "\\"
+        local mkdir_cmd
+        if is_windows then
+            -- Windows: use mkdir with quotes around path
+            mkdir_cmd = 'mkdir "' .. cache_dir .. '" 2>NUL || exit 0'
+        else
+            -- Unix/macOS/Linux: use mkdir -p
+            mkdir_cmd = "mkdir -p " .. cache_dir
+        end
+
+        local result = cmd.exec(mkdir_cmd)
+        if result.code ~= 0 then
+            -- Don't fail hard - caching is optional
+            -- Just log that we couldn't create the directory
+            -- error("Failed to create cache directory: " .. cache_dir)
         end
     end
 end
@@ -66,7 +81,7 @@ function M.set_cache(owner, repo, versions, etag, last_modified)
         timestamp = os.time(),
         etag = etag,
         last_modified = last_modified,
-        versions = versions
+        versions = versions,
     }
 
     local json = require("json")

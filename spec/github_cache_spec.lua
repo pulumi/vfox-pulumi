@@ -17,14 +17,11 @@ describe("github_cache", function()
 
         original_modules.file = package.loaded.file
         original_modules.json = package.loaded.json
+        original_modules.cmd = package.loaded.cmd
 
         package.loaded.file = {
             exists = function(path)
                 return file_ops.existing_files[path] ~= nil
-            end,
-            create_dir_all = function(path)
-                file_ops.existing_files[path] = "__DIR__"
-                return true, nil
             end,
             read = function(path)
                 local content = file_ops.existing_files[path]
@@ -37,6 +34,20 @@ describe("github_cache", function()
                 file_ops.written_files[path] = content
                 file_ops.existing_files[path] = content
                 return true, nil
+            end,
+        }
+
+        package.loaded.cmd = {
+            exec = function(command)
+                -- Mock mkdir command to mark directory as created
+                if command:match("^mkdir") then
+                    -- Extract path from mkdir command
+                    local path = command:match("mkdir %-p%s+(.+)") or command:match('mkdir%s+"([^"]+)"')
+                    if path then
+                        file_ops.existing_files[path] = "__DIR__"
+                    end
+                end
+                return { code = 0 }
             end,
         }
 
@@ -53,7 +64,9 @@ describe("github_cache", function()
                         local result = "{"
                         local first = true
                         for k, v in pairs(val) do
-                            if not first then result = result .. "," end
+                            if not first then
+                                result = result .. ","
+                            end
                             first = false
                             result = result .. '"' .. k .. '":' .. serialize(v)
                         end
@@ -92,6 +105,7 @@ describe("github_cache", function()
     after_each(function()
         package.loaded.file = original_modules.file
         package.loaded.json = original_modules.json
+        package.loaded.cmd = original_modules.cmd
         package.loaded.github_cache = nil
         os.getenv = original_getenv
         os.time = original_time
@@ -150,7 +164,7 @@ describe("github_cache", function()
             local path = cache.get_cache_path("pulumi", "pulumi-aws")
             local cache_data = {
                 timestamp = 1705234567,
-                etag = "W/\"abc123\"",
+                etag = 'W/"abc123"',
                 last_modified = "Mon, 14 Jan 2026 10:00:00 GMT",
                 versions = { "9.9.0", "9.8.0" },
             }
@@ -160,7 +174,7 @@ describe("github_cache", function()
             local result = cache.get_cache("pulumi", "pulumi-aws")
             assert.is_not_nil(result)
             assert.is_equal(1705234567, result.timestamp)
-            assert.is_equal("W/\"abc123\"", result.etag)
+            assert.is_equal('W/"abc123"', result.etag)
             assert.is_equal(2, #result.versions)
         end)
     end)
@@ -168,7 +182,7 @@ describe("github_cache", function()
     describe("set_cache", function()
         it("writes cache file with correct structure", function()
             local versions = { "9.9.0", "9.8.0" }
-            cache.set_cache("pulumi", "pulumi-aws", versions, "W/\"abc123\"", "Mon, 14 Jan 2026 10:00:00 GMT")
+            cache.set_cache("pulumi", "pulumi-aws", versions, 'W/"abc123"', "Mon, 14 Jan 2026 10:00:00 GMT")
 
             local path = cache.get_cache_path("pulumi", "pulumi-aws")
             assert.is_not_nil(file_ops.written_files[path])
@@ -231,7 +245,7 @@ describe("github_cache", function()
             local path = cache.get_cache_path("pulumi", "pulumi-aws")
             local initial_data = {
                 timestamp = 1705230000,
-                etag = "W/\"abc123\"",
+                etag = 'W/"abc123"',
                 last_modified = "Mon, 14 Jan 2026 10:00:00 GMT",
                 versions = { "9.9.0", "9.8.0" },
             }
