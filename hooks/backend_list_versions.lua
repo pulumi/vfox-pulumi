@@ -45,9 +45,30 @@ function PLUGIN:BackendListVersions(ctx)
 
     local full_repo = owner .. "/" .. repo
 
+    -- Check cache first
+    local cache = require("github_cache")
+    local ttl = tonumber(os.getenv("VFOX_PULUMI_CACHE_TTL")) or 43200
+    local disable_cache = os.getenv("VFOX_PULUMI_DISABLE_CACHE") == "1"
+
+    if not disable_cache then
+        local cached = cache.get_cache(owner, repo)
+        if cached and cache.is_cache_valid(cached, ttl) then
+            return { versions = cached.versions }
+        end
+    end
+
     local http = require("http")
     local json = require("json")
     local headers = { ["User-Agent"] = "mise-backend-pulumi" }
+
+    -- Add conditional request headers if we have stale cache
+    local cached = nil
+    if not disable_cache then
+        cached = cache.get_cache(owner, repo)
+        if cached and cached.etag then
+            headers["If-None-Match"] = cached.etag
+        end
+    end
 
     -- Check for GitHub token in MISE_GITHUB_TOKEN or GITHUB_TOKEN
     -- MISE_GITHUB_TOKEN takes precedence if both are set
@@ -73,6 +94,14 @@ function PLUGIN:BackendListVersions(ctx)
         error("Failed to fetch versions for " .. tool .. ": " .. err)
     end
 
+    -- Handle 304 Not Modified (doesn't count against rate limit!)
+    if resp.status_code == 304 and cached then
+        if not disable_cache then
+            cache.touch_cache(owner, repo)
+        end
+        return { versions = cached.versions }
+    end
+
     if resp.status_code ~= 200 then
         error(("GitHub API returned status %d for %s"):format(resp.status_code, full_repo))
     end
@@ -96,6 +125,13 @@ function PLUGIN:BackendListVersions(ctx)
     end
 
     table.sort(versions, stable_first_sort)
+
+    -- Store cache with ETag for future conditional requests
+    if not disable_cache then
+        local etag = resp.headers["etag"] or resp.headers["ETag"]
+        local last_modified = resp.headers["last-modified"] or resp.headers["Last-Modified"]
+        cache.set_cache(owner, repo, versions, etag, last_modified)
+    end
 
     return { versions = versions }
 end
