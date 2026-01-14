@@ -34,3 +34,4 @@ depends = ["lint", "unit"]
 
 [settings]
 experimental = true
+fetch_remote_versions_cache = "24h"
