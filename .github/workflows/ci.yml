@@ -62,6 +62,7 @@ jobs:
           cache: false
           mise_toml: |
             [tools]
+            "vfox-pulumi:pulumi/pulumi-converter-terraform" = "1.2.4"
             "vfox-pulumi:pulumi/pulumi-local" = "0.1.6"
             "vfox-pulumi:pulumi/pulumi-tls" = "latest"
             "vfox-pulumi:equinix/pulumi-equinix" = "0.6.0"
@@ -80,6 +81,7 @@ jobs:
           pulumi-resource-local --version
           output=$(pulumi plugin ls)
           echo "$output"
+          echo "$output" | grep -q "converter" || { echo "Error: 'terraform' converter not found in pulumi plugin ls output"; exit 1; }
           echo "$output" | grep -q "local" || { echo "Error: 'local' provider not found in pulumi plugin ls output"; exit 1; }
           echo "$output" | grep -q "tls" || { echo "Error: 'tls' provider not found in pulumi plugin ls output"; exit 1; }
           echo "$output" | grep -q "equinix" || { echo "Error: 'equinix' provider not found in pulumi plugin ls output"; exit 1; }
@@ -114,6 +116,7 @@ jobs:
           cache: true
           mise_toml: |
             [tools]
+            "vfox-pulumi:pulumi/pulumi-converter-terraform" = "1.2.4"
             "vfox-pulumi:pulumi/pulumi-local" = "0.1.6"
             "vfox-pulumi:pulumi/pulumi-tls" = "latest"
             "vfox-pulumi:equinix/pulumi-equinix" = "0.6.0"
@@ -132,6 +135,7 @@ jobs:
           pulumi-resource-local --version
           output=$(pulumi plugin ls)
           echo "$output"
+          echo "$output" | grep -q "converter" || { echo "Error: 'terraform' converter not found in pulumi plugin ls output"; exit 1; }
           echo "$output" | grep -q "local" || { echo "Error: 'local' provider not found in pulumi plugin ls output"; exit 1; }
           echo "$output" | grep -q "tls" || { echo "Error: 'tls' provider not found in pulumi plugin ls output"; exit 1; }
           echo "$output" | grep -q "equinix" || { echo "Error: 'equinix' provider not found in pulumi plugin ls output"; exit 1; }
