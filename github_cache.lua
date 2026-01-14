@@ -88,10 +88,13 @@ function M.set_cache(owner, repo, versions, etag, last_modified)
     local content = json.encode(cache_data)
 
     local cache_path = M.get_cache_path(owner, repo)
-    local file = require("file")
 
-    local ok, err = file.write(cache_path, content)
-    if not ok then
+    -- Use Lua's io module to write files (vfox file module doesn't have write)
+    local file_handle, err = io.open(cache_path, "w")
+    if file_handle then
+        file_handle:write(content)
+        file_handle:close()
+    else
         -- Log error but don't fail - caching is optional
         -- error("Failed to write cache: " .. (err or "unknown error"))
     end
@@ -127,10 +130,13 @@ function M.touch_cache(owner, repo)
     local content = json.encode(cache_data)
 
     local cache_path = M.get_cache_path(owner, repo)
-    local file = require("file")
 
-    local ok, err = file.write(cache_path, content)
-    if not ok then
+    -- Use Lua's io module to write files (vfox file module doesn't have write)
+    local file_handle, err = io.open(cache_path, "w")
+    if file_handle then
+        file_handle:write(content)
+        file_handle:close()
+    else
         -- Log error but don't fail
         -- error("Failed to touch cache: " .. (err or "unknown error"))
     end

@@ -1,6 +1,7 @@
 local original_modules = {}
 local original_getenv = os.getenv
 local original_time = os.time
+local original_io_open = io.open
 local getenv_stub
 local time_stub
 local file_ops = {}
@@ -97,6 +98,23 @@ describe("github_cache", function()
             return 1705234567
         end
 
+        -- Mock io.open for file writing (used in production code)
+        io.open = function(path, mode)
+            if mode == "w" then
+                local file_handle = {
+                    write = function(self, content)
+                        file_ops.written_files[path] = content
+                        file_ops.existing_files[path] = content
+                    end,
+                    close = function(self)
+                        -- No-op
+                    end,
+                }
+                return file_handle, nil
+            end
+            return nil, "mock io.open only supports write mode"
+        end
+
         -- Reload cache module after mocking
         package.loaded.github_cache = nil
         cache = require("github_cache")
@@ -109,6 +127,7 @@ describe("github_cache", function()
         package.loaded.github_cache = nil
         os.getenv = original_getenv
         os.time = original_time
+        io.open = original_io_open
     end)
 
     describe("get_cache_path", function()
