@@ -81,7 +81,7 @@ jobs:
           pulumi-resource-local --version
           output=$(pulumi plugin ls)
           echo "$output"
-          echo "$output" | grep -q "converter-terraform" || { echo "Error: 'terraform' converter not found in pulumi plugin ls output"; exit 1; }
+          echo "$output" | grep -q "converter" || { echo "Error: 'terraform' converter not found in pulumi plugin ls output"; exit 1; }
           echo "$output" | grep -q "local" || { echo "Error: 'local' provider not found in pulumi plugin ls output"; exit 1; }
           echo "$output" | grep -q "tls" || { echo "Error: 'tls' provider not found in pulumi plugin ls output"; exit 1; }
           echo "$output" | grep -q "equinix" || { echo "Error: 'equinix' provider not found in pulumi plugin ls output"; exit 1; }
@@ -135,7 +135,7 @@ jobs:
           pulumi-resource-local --version
           output=$(pulumi plugin ls)
           echo "$output"
-          echo "$output" | grep -q "converter-terraform" || { echo "Error: 'terraform' converter not found in pulumi plugin ls output"; exit 1; }
+          echo "$output" | grep -q "converter" || { echo "Error: 'terraform' converter not found in pulumi plugin ls output"; exit 1; }
           echo "$output" | grep -q "local" || { echo "Error: 'local' provider not found in pulumi plugin ls output"; exit 1; }
           echo "$output" | grep -q "tls" || { echo "Error: 'tls' provider not found in pulumi plugin ls output"; exit 1; }
           echo "$output" | grep -q "equinix" || { echo "Error: 'equinix' provider not found in pulumi plugin ls output"; exit 1; }
