@@ -58,26 +58,21 @@ end
 -- Unix: Symlink (saves disk space)
 -- Windows: Copy (symlinks need admin/Developer Mode)
 function M.install_to_pulumi_home(mise_bin_path, tool, version)
-    print("[pulumi_home] install_to_pulumi_home called for tool: " .. tool .. ", version: " .. version)
     local file = require("file")
     local cmd = require("cmd")
     local strings = require("strings")
 
     -- Parse tool info
-    print("[pulumi_home] Parsing tool info")
     local tool_info, err = parse_tool_info(tool)
     if not tool_info then
         -- Silently return if we can't parse the tool name
-        print("[pulumi_home] Failed to parse tool info, returning silently: " .. tostring(err))
         return
     end
-    print("[pulumi_home] Tool info - kind: " .. tool_info.kind .. ", package_name: " .. tool_info.package_name)
 
     local kind = tool_info.kind
     local package_name = tool_info.package_name
 
     -- Determine PULUMI_HOME location
-    print("[pulumi_home] Determining PULUMI_HOME location")
     local pulumi_home = os.getenv("PULUMI_HOME")
     if not pulumi_home or pulumi_home == "" then
         if M.is_windows() then
@@ -86,7 +81,6 @@ function M.install_to_pulumi_home(mise_bin_path, tool, version)
             pulumi_home = file.join_path(os.getenv("HOME"), ".pulumi")
         end
     end
-    print("[pulumi_home] PULUMI_HOME: " .. pulumi_home)
 
     -- Build paths: PULUMI_HOME/plugins/<type>-<name>-v<version>/pulumi-<type>-<name>
     local plugin_dir_name = strings.join({ kind, package_name, "v" .. version }, "-")
@@ -99,93 +93,61 @@ function M.install_to_pulumi_home(mise_bin_path, tool, version)
     local plugins_dir = file.join_path(pulumi_home, "plugins")
     local source_binary = file.join_path(mise_bin_path, binary_name)
     local target_binary = file.join_path(plugin_dir, binary_name)
-    print("[pulumi_home] Source binary: " .. source_binary)
-    print("[pulumi_home] Target binary: " .. target_binary)
-    print("[pulumi_home] Plugin dir: " .. plugin_dir)
 
     -- Platform-specific installation
-    print("[pulumi_home] Platform: " .. (M.is_windows() and "Windows" or "Unix"))
     if M.is_windows() then
         -- Windows: Copy binary
         -- Normalize paths to backslashes only
-        print("[pulumi_home] Normalizing Windows paths")
         local normalized_plugin_dir = plugin_dir:gsub("/", "\\")
         local normalized_plugins_dir = plugins_dir:gsub("/", "\\")
         local normalized_source = source_binary:gsub("/", "\\")
         local normalized_target = target_binary:gsub("/", "\\")
 
         -- Remove old plugin dir if exists (ignore errors)
-        print("[pulumi_home] Removing old plugin dir (if exists): " .. normalized_plugin_dir)
         pcall(function()
             windows_exec('rmdir /S /Q "' .. normalized_plugin_dir .. '"')
         end)
-        print("[pulumi_home] Old plugin dir removed")
-
         -- Create parent directory (might already exist from other plugins)
-        print("[pulumi_home] Creating parent plugins dir: " .. normalized_plugins_dir)
         pcall(function()
             windows_exec('mkdir "' .. normalized_plugins_dir .. '"')
         end)
-        print("[pulumi_home] Parent plugins dir created")
-
         -- Create plugin directory
-        print("[pulumi_home] Creating plugin dir: " .. normalized_plugin_dir)
         windows_exec('mkdir "' .. normalized_plugin_dir .. '"')
-        print("[pulumi_home] Plugin dir created")
 
         -- Verify source exists before copying
-        print("[pulumi_home] Verifying source binary exists: " .. normalized_source)
         local source_check, source_err = pcall(function()
             windows_exec('dir "' .. normalized_source .. '" >NUL')
         end)
         if not source_check then
-            print("[pulumi_home] ERROR: Source binary not found")
             error(string.format("Source binary not found: %s", normalized_source))
         end
-        print("[pulumi_home] Source binary verified")
 
-        print("[pulumi_home] Copying binary from source to target")
         windows_exec(string.format('copy /Y "%s" "%s"', normalized_source, normalized_target))
-        print("[pulumi_home] Binary copied successfully")
     else
         -- Unix: Symlink binary (saves disk space)
-        print("[pulumi_home] Removing old plugin dir: " .. plugin_dir)
         cmd.exec("rm -rf " .. plugin_dir)
-        print("[pulumi_home] Old plugin dir removed")
-
-        print("[pulumi_home] Creating plugin dir: " .. plugin_dir)
         cmd.exec("mkdir -p " .. plugin_dir)
-        print("[pulumi_home] Plugin dir created")
-
-        print("[pulumi_home] Creating symlink from " .. source_binary .. " to " .. target_binary)
         cmd.exec(string.format("ln -s %s %s", source_binary, target_binary))
-        print("[pulumi_home] Symlink created successfully")
     end
-    print("[pulumi_home] install_to_pulumi_home completed")
 end
 
 -- Check if symlink/copy exists in PULUMI_HOME
 -- Returns true if the plugin is already installed, false otherwise
 function M.check_pulumi_home_exists(mise_bin_path, tool, version)
-    print("[pulumi_home] check_pulumi_home_exists called for tool: " .. tool)
     local file = require("file")
     local cmd = require("cmd")
     local strings = require("strings")
 
     -- Parse tool info
-    print("[pulumi_home] Parsing tool info")
     local tool_info, err = parse_tool_info(tool)
     if not tool_info then
-        print("[pulumi_home] Failed to parse tool info: " .. tostring(err))
         return false
     end
-    print("[pulumi_home] Tool info - kind: " .. tool_info.kind .. ", package_name: " .. tool_info.package_name)
 
     local kind = tool_info.kind
     local package_name = tool_info.package_name
 
     -- Determine PULUMI_HOME location
-    print("[pulumi_home] Determining PULUMI_HOME location")
     local pulumi_home = os.getenv("PULUMI_HOME")
     if not pulumi_home or pulumi_home == "" then
         if M.is_windows() then
@@ -194,7 +156,6 @@ function M.check_pulumi_home_exists(mise_bin_path, tool, version)
             pulumi_home = file.join_path(os.getenv("HOME"), ".pulumi")
         end
     end
-    print("[pulumi_home] PULUMI_HOME: " .. pulumi_home)
 
     -- Build target binary path
     local plugin_dir_name = strings.join({ kind, package_name, "v" .. version }, "-")
@@ -204,14 +165,11 @@ function M.check_pulumi_home_exists(mise_bin_path, tool, version)
     end
     local plugin_dir = file.join_path(pulumi_home, "plugins", plugin_dir_name)
     local target_binary = file.join_path(plugin_dir, binary_name)
-    print("[pulumi_home] Target binary path: " .. target_binary)
 
     -- Check if target exists
-    print("[pulumi_home] Checking if target binary exists")
     if M.is_windows() then
         local normalized_target = target_binary:gsub("/", "\\")
-        print("[pulumi_home] Normalized Windows path: " .. normalized_target)
-        local result = pcall(function()
+        return pcall(function()
             local handle = io.popen('dir "' .. normalized_target .. '" 2>NUL')
             local output = handle:read("*a")
             handle:close()
@@ -221,15 +179,10 @@ function M.check_pulumi_home_exists(mise_bin_path, tool, version)
             end
             error("not found")
         end)
-        print("[pulumi_home] Windows check result: " .. tostring(result))
-        return result
     else
-        print("[pulumi_home] Running Unix test command: test -f " .. target_binary)
-        local result = pcall(function()
+        return pcall(function()
             cmd.exec("test -f " .. target_binary)
         end)
-        print("[pulumi_home] Unix check result: " .. tostring(result))
-        return result
     end
 end
 
@@ -280,16 +233,8 @@ end
 -- Ensure symlink/copy exists in PULUMI_HOME (idempotent)
 -- Only creates the link if it doesn't already exist
 function M.ensure_pulumi_home_link(mise_bin_path, tool, version)
-    print("[pulumi_home] ensure_pulumi_home_link called for tool: " .. tool .. ", version: " .. version .. ", path: " .. mise_bin_path)
-    print("[pulumi_home] Checking if PULUMI_HOME link already exists")
-    local exists = M.check_pulumi_home_exists(mise_bin_path, tool, version)
-    print("[pulumi_home] PULUMI_HOME link exists: " .. tostring(exists))
-    if not exists then
-        print("[pulumi_home] Creating PULUMI_HOME link")
+    if not M.check_pulumi_home_exists(mise_bin_path, tool, version) then
         M.install_to_pulumi_home(mise_bin_path, tool, version)
-        print("[pulumi_home] PULUMI_HOME link created successfully")
-    else
-        print("[pulumi_home] Skipping creation (link already exists)")
     end
 end
 
