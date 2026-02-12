@@ -57,13 +57,6 @@ local function find_git_root()
 end
 
 function PLUGIN:MiseEnv(ctx)
-    -- NOTE: We used to try to ensure PULUMI_HOME symlinks here by calling
-    -- "mise list" and "mise where", but that creates a deadlock because we're
-    -- calling mise from inside a mise hook. The PULUMI_HOME symlinks are now
-    -- created in the PostInstall hook instead, which is less reliable (install
-    -- isn't called in cases where we're restoring from cache) but at least
-    -- works.
-
     -- Parse go.mod to extract version information
     local module_path = "github.com/pulumi/pulumi/pkg/v3"
     local go_mod_path = ctx.options.module_path or ""

@@ -4,12 +4,10 @@
 
 -- Helper Functions
 
--- Load shared PULUMI_HOME management module
-local pulumi_home_lib = require("pulumi_home")
-
--- Convenience alias for is_windows check
+-- Check if running on Windows (case-insensitive)
 local function is_windows()
-    return pulumi_home_lib.is_windows()
+    local os_type = RUNTIME.osType
+    return os_type == "Windows" or os_type == "windows" or os_type == "WINDOWS"
 end
 
 -- Execute command on Windows using io.popen (cmd.exec doesn't work in mise on Windows)
@@ -23,52 +21,6 @@ function windows_exec(command)
     end
 
     return output
-end
-
--- Create a temporary directory with a unique name
-function create_temp_dir()
-    local cmd = require("cmd")
-
-    if is_windows() then
-        -- Use RUNNER_TEMP (GitHub Actions) or TEMP/TMP as fallback
-        local base_temp = os.getenv("RUNNER_TEMP") or os.getenv("TEMP") or os.getenv("TMP")
-        if not base_temp or base_temp == "" then
-            error("No temp directory environment variable set (tried RUNNER_TEMP, TEMP, TMP)")
-        end
-
-        -- Normalize to forward slashes internally
-        base_temp = base_temp:gsub("\\", "/")
-
-        -- Generate a unique name using os.tmpname()
-        local tmp_name_full = os.tmpname()
-
-        -- os.tmpname() creates a file, so remove it
-        os.remove(tmp_name_full)
-
-        -- Extract just the basename (e.g., "s2mk.0") and replace dots with underscores
-        local tmp_name = tmp_name_full:match("[^/\\]+$")
-
-        -- Replace dots with underscores to make it a valid directory name (e.g., "s2mk.0" -> "s2mk_0")
-        tmp_name = tmp_name:gsub("%.", "_")
-
-        -- Build the directory path with forward slashes internally
-        local tmp_dir_name = base_temp .. "/lua_temp_" .. tmp_name
-
-        -- Normalize to backslashes for Windows mkdir (same pattern as rest of file)
-        local normalized_temp = tmp_dir_name:gsub("/", "\\")
-
-        local mkdir_cmd = 'mkdir "' .. normalized_temp .. '"'
-
-        windows_exec(mkdir_cmd)
-
-        return tmp_dir_name -- Return with forward slashes for consistency
-    else
-        -- On Unix, use cmd.exec with mkdir -p
-        local temp_path = os.tmpname()
-        os.remove(temp_path)
-        cmd.exec("mkdir -p " .. temp_path)
-        return temp_path
-    end
 end
 
 -- Get platform information (OS and architecture) in Pulumi's expected format
@@ -187,38 +139,20 @@ function download_plugin(owner, repo, kind, name, version, download_path)
     return false, "Failed to download plugin: " .. (err or "unknown error")
 end
 
--- Extract plugin tarball to destination
-function extract_plugin(tarball_path, destination)
+-- Extract plugin tarball and clean up
+function extract_and_cleanup(tarball_path, install_path)
     local archiver = require("archiver")
     local cmd = require("cmd")
 
+    -- Extract tarball directly to install path
+    archiver.decompress(tarball_path, install_path)
+
+    -- Remove tarball
     if is_windows() then
-        -- Normalize to backslashes only
-        local normalized_dest = destination:gsub("/", "\\")
-        windows_exec('mkdir "' .. normalized_dest .. '"')
+        local normalized_tarball = tarball_path:gsub("/", "\\")
+        windows_exec('del /F /Q "' .. normalized_tarball .. '"')
     else
-        cmd.exec("mkdir -p " .. destination)
-    end
-    archiver.decompress(tarball_path, destination)
-end
-
--- Install plugin to mise location
-function install_to_mise(extracted_path, install_path)
-    local file = require("file")
-    local cmd = require("cmd")
-
-    local bin_path = file.join_path(install_path, "bin")
-    if is_windows() then
-        -- Normalize to backslashes only
-        local normalized_bin = bin_path:gsub("/", "\\")
-        local normalized_extracted = extracted_path:gsub("/", "\\")
-
-        windows_exec('mkdir "' .. normalized_bin .. '"')
-        -- Copy contents with \* (like Unix /*)
-        windows_exec(string.format('xcopy /E /I /Y "%s\\*" "%s"', normalized_extracted, normalized_bin))
-    else
-        cmd.exec("mkdir -p " .. bin_path)
-        cmd.exec("cp -r " .. extracted_path .. "/* " .. bin_path)
+        cmd.exec("rm -f " .. tarball_path)
     end
 end
 
@@ -262,127 +196,30 @@ function PLUGIN:BackendInstall(ctx)
         package_name = repo:gsub("^pulumi%-", "")
     end
 
-    local mise_bin_path = file.join_path(install_path, "bin")
-
-    -- Check if already installed (handles cache restoration)
-    -- If mise location has the binary but PULUMI_HOME link/copy is missing, just recreate it
-    if pulumi_home_lib.check_mise_cache_exists(mise_bin_path, tool, version) then
-        -- Binary exists (cache restored), just ensure PULUMI_HOME link/copy
-        pulumi_home_lib.ensure_pulumi_home_link(mise_bin_path, tool, version)
-        return {}
-    end
-
-    -- Need to download: create temporary directory for download/extraction
-    local temp_dir = create_temp_dir()
-
-    -- Verify temp directory was created
-    local dir_check_success = pcall(function()
-        if is_windows() then
-            local normalized_temp = temp_dir:gsub("/", "\\")
-            windows_exec('dir "' .. normalized_temp .. '" >NUL 2>&1')
-        else
-            cmd.exec("test -d " .. temp_dir)
-        end
-    end)
-    if not dir_check_success then
-        error("Failed to create temporary directory: " .. temp_dir)
-    end
-
-    -- Build paths using file.join_path (uses forward slashes, works on all platforms)
-    local tarball_path = file.join_path(temp_dir, "plugin.tar.gz")
-    local extract_path = file.join_path(temp_dir, "extracted")
+    -- Download tarball directly to install path
+    local tarball_path = file.join_path(install_path, "plugin.tar.gz")
 
     -- Download plugin
     local success, message = download_plugin(owner, repo, type, package_name, version, tarball_path)
     if not success then
-        if is_windows() then
-            local normalized_temp = temp_dir:gsub("/", "\\")
-            pcall(function()
-                windows_exec('rmdir /S /Q "' .. normalized_temp .. '"')
-            end)
-        else
-            cmd.exec("rm -rf " .. temp_dir)
-        end
         error("Failed to download " .. type .. " " .. package_name .. "@" .. version .. ": " .. message)
     end
 
-    -- Verify file was downloaded
-    local file_check_success = pcall(function()
-        if is_windows() then
-            local normalized_tarball = tarball_path:gsub("/", "\\")
-            windows_exec('dir "' .. normalized_tarball .. '" >NUL 2>&1')
-        else
-            cmd.exec("test -f " .. tarball_path)
-        end
-    end)
-    if not file_check_success then
-        if is_windows() then
-            local normalized_temp = temp_dir:gsub("/", "\\")
-            pcall(function()
-                windows_exec('rmdir /S /Q "' .. normalized_temp .. '"')
-            end)
-        else
-            cmd.exec("rm -rf " .. temp_dir)
-        end
-        error("Downloaded file not found: " .. tarball_path)
-    end
-
-    -- Extract plugin
+    -- Extract and cleanup
     local extract_success, extract_err = pcall(function()
-        extract_plugin(tarball_path, extract_path)
+        extract_and_cleanup(tarball_path, install_path)
     end)
     if not extract_success then
-        if is_windows() then
-            local normalized_temp = temp_dir:gsub("/", "\\")
-            pcall(function()
-                windows_exec('rmdir /S /Q "' .. normalized_temp .. '"')
-            end)
-        else
-            cmd.exec("rm -rf " .. temp_dir)
-        end
-        error("Failed to extract plugin: " .. tostring(extract_err))
-    end
-
-    -- Install to mise location (primary)
-    local mise_success, mise_err = pcall(function()
-        install_to_mise(extract_path, install_path)
-    end)
-    if not mise_success then
-        if is_windows() then
-            local normalized_temp = temp_dir:gsub("/", "\\")
-            pcall(function()
-                windows_exec('rmdir /S /Q "' .. normalized_temp .. '"')
-            end)
-        else
-            cmd.exec("rm -rf " .. temp_dir)
-        end
-        error("Failed to install to mise location: " .. tostring(mise_err))
-    end
-
-    -- Install to PULUMI_HOME (symlink on Unix, copy on Windows)
-    local pulumi_success, pulumi_err = pcall(function()
-        pulumi_home_lib.install_to_pulumi_home(mise_bin_path, tool, version)
-    end)
-    if not pulumi_success then
-        if is_windows() then
-            local normalized_temp = temp_dir:gsub("/", "\\")
-            pcall(function()
-                windows_exec('rmdir /S /Q "' .. normalized_temp .. '"')
-            end)
-        else
-            cmd.exec("rm -rf " .. temp_dir)
-        end
-        error("Failed to install to PULUMI_HOME: " .. tostring(pulumi_err))
-    end
-
-    -- Clean up
-    if is_windows() then
-        local forward_temp = temp_dir:gsub("\\", "/")
+        -- Clean up tarball if extraction failed
         pcall(function()
-            windows_exec('rmdir /S /Q "' .. forward_temp .. '"')
+            if is_windows() then
+                local normalized_tarball = tarball_path:gsub("/", "\\")
+                windows_exec('del /F /Q "' .. normalized_tarball .. '"')
+            else
+                cmd.exec("rm -f " .. tarball_path)
+            end
         end)
-    else
-        cmd.exec("rm -rf " .. temp_dir)
+        error("Failed to extract plugin: " .. tostring(extract_err))
     end
 
     return {}
