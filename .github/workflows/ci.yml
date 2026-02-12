@@ -73,7 +73,7 @@ jobs:
         shell: bash
         run: |
           pulumi-resource-local --version
-          pulumi-converter-terraform --version
+          which pulumi-converter-terraform # no --version support
           pulumi-resource-tls --version
           pulumi-resource-equinix --version
 
@@ -118,6 +118,6 @@ jobs:
         shell: bash
         run: |
           pulumi-resource-local --version
-          pulumi-converter-terraform --version
+          which pulumi-converter-terraform # no --version support
           pulumi-resource-tls --version
           pulumi-resource-equinix --version
