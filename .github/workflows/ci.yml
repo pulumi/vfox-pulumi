@@ -69,22 +69,13 @@ jobs:
           working_directory: integration-cache
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
           experimental: true
-      # We install pulumi outside of mise because it shouldn't be required in
-      # order to install provider plugins.
-      - uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6.6.1
-        with:
-          pulumi-version: "v3.214.1"
-      - name: Verify Pulumi plugins
+      - name: Verify binaries
         shell: bash
         run: |
-          cd integration-cache
           pulumi-resource-local --version
-          output=$(pulumi plugin ls)
-          echo "$output"
-          echo "$output" | grep -q "converter" || { echo "Error: 'terraform' converter not found in pulumi plugin ls output"; exit 1; }
-          echo "$output" | grep -q "local" || { echo "Error: 'local' provider not found in pulumi plugin ls output"; exit 1; }
-          echo "$output" | grep -q "tls" || { echo "Error: 'tls' provider not found in pulumi plugin ls output"; exit 1; }
-          echo "$output" | grep -q "equinix" || { echo "Error: 'equinix' provider not found in pulumi plugin ls output"; exit 1; }
+          pulumi-converter-terraform --version
+          pulumi-resource-tls --version
+          pulumi-resource-equinix --version
 
   integration-cache:
     needs: integration
@@ -123,19 +114,10 @@ jobs:
           working_directory: integration-cache
           github_token: ${{ steps.esc-secrets.outputs.PULUMI_BOT_TOKEN }}
           experimental: true
-      # We install pulumi outside of mise because it shouldn't be required in
-      # order to install provider plugins.
-      - uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6.6.1
-        with:
-          pulumi-version: "v3.214.1"
-      - name: Verify Pulumi plugins (cache restoration test)
+      - name: Verify binaries
         shell: bash
         run: |
-          cd integration-cache
           pulumi-resource-local --version
-          output=$(pulumi plugin ls)
-          echo "$output"
-          echo "$output" | grep -q "converter" || { echo "Error: 'terraform' converter not found in pulumi plugin ls output"; exit 1; }
-          echo "$output" | grep -q "local" || { echo "Error: 'local' provider not found in pulumi plugin ls output"; exit 1; }
-          echo "$output" | grep -q "tls" || { echo "Error: 'tls' provider not found in pulumi plugin ls output"; exit 1; }
-          echo "$output" | grep -q "equinix" || { echo "Error: 'equinix' provider not found in pulumi plugin ls output"; exit 1; }
+          pulumi-converter-terraform --version
+          pulumi-resource-tls --version
+          pulumi-resource-equinix --version
