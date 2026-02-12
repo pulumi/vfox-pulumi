@@ -3,12 +3,16 @@
 -- Documentation: https://mise.jdx.dev/backend-plugin-development.html#backendexecenv
 
 function PLUGIN:BackendExecEnv(ctx)
+    local file = require("file")
     local install_path = ctx.install_path
+
+    -- Binaries are in bin/ subdirectory
+    local bin_path = file.join_path(install_path, "bin")
 
     -- Ensure the mise-managed plugin path wins over binaries from the ambient PATH.
     -- See docs/adr/0001-path-management.md for the design rationale.
     local env_vars = {
-        { key = "PATH", value = install_path },
+        { key = "PATH", value = bin_path },
     }
 
     return {

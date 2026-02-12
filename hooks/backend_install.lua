@@ -142,10 +142,22 @@ end
 -- Extract plugin tarball and clean up
 function extract_and_cleanup(tarball_path, install_path)
     local archiver = require("archiver")
+    local file = require("file")
     local cmd = require("cmd")
 
-    -- Extract tarball directly to install path
-    archiver.decompress(tarball_path, install_path)
+    -- Extract to bin/ subdirectory for compatibility with existing caches
+    local bin_path = file.join_path(install_path, "bin")
+
+    -- Create bin directory
+    if is_windows() then
+        local normalized_bin = bin_path:gsub("/", "\\")
+        windows_exec('mkdir "' .. normalized_bin .. '"')
+    else
+        cmd.exec("mkdir -p " .. bin_path)
+    end
+
+    -- Extract tarball to bin path
+    archiver.decompress(tarball_path, bin_path)
 
     -- Remove tarball
     if is_windows() then
