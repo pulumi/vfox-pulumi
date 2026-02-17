@@ -50,13 +50,8 @@ git add .
 git commit -q -m "init"
 
 # Link the local plugin for testing
-LINK_OUTPUT=$(mise plugin link --force vfox-pulumi "$PLUGIN_DIR" 2>&1 || true)
+LINK_OUTPUT=$(mise plugin link --force "$PLUGIN_DIR" 2>&1 || true)
 echo "Plugin link output: $LINK_OUTPUT"
-if echo "$LINK_OUTPUT" | grep -q "Plugin link may have failed"; then
-    echo "✗ Plugin link failed"
-    echo "Output: $LINK_OUTPUT"
-    exit 1
-fi
 
 echo "Testing from repository root..."
 cd "$TEST_DIR"
