@@ -35,6 +35,14 @@ require (
 )
 EOF
 
+# Uninstall the local plugin for testing
+UNLINK_OUTPUT=$(mise plugin uninstall vfox-pulumi 2>&1 || true)
+echo "Plugin uninstall output: $UNLINK_OUTPUT"
+
+# Link the local plugin for testing
+LINK_OUTPUT=$(mise plugin link --force vfox-pulumi "$PLUGIN_DIR" 2>&1 || true)
+echo "Plugin link output: $LINK_OUTPUT"
+
 # Create mise config with module_path pointing to provider/
 # The plugin will be linked via mise plugin link, so we don't specify a URL
 mkdir -p .config
@@ -49,9 +57,6 @@ EOF
 git add .
 git commit -q -m "init"
 
-# Link the local plugin for testing
-LINK_OUTPUT=$(mise plugin link --force "$PLUGIN_DIR" 2>&1 || true)
-echo "Plugin link output: $LINK_OUTPUT"
 
 echo "Testing from repository root..."
 cd "$TEST_DIR"
