@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# E2E test for vfox-pulumi mise_env hook from subdirectories
+# Regression test for issue #2056: mise should find go.mod from subdirectories
+
+set -euo pipefail
+
+# Get the plugin directory
+PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+TEST_DIR=$(mktemp -d)
+trap 'rm -rf "$TEST_DIR"' EXIT
+
+# Trust the test directory
+export MISE_TRUSTED_CONFIG_PATHS="$TEST_DIR"
+
+echo "Setting up test repository in $TEST_DIR"
+
+# Create directory structure - mimic pulumi-xyz where go.mod is in provider/ not root
+mkdir -p "$TEST_DIR/provider/subdir"
+cd "$TEST_DIR"
+
+# Initialize as git repo (needed for find_git_root)
+git init -q
+git config user.email "test@test.com"
+git config user.name "Test"
+
+# Create go.mod in provider/ subdirectory
+cat > provider/go.mod <<'EOF'
+module github.com/pulumi/pulumi-test
+
+go 1.23.5
+
+require (
+	github.com/pulumi/pulumi/pkg/v3 v3.140.0
+)
+EOF
+
+# Create mise config with module_path pointing to provider/
+# The plugin will be linked via mise plugin link, so we don't specify a URL
+mkdir -p .config
+cat > .config/mise.toml <<'EOF'
+[env]
+_.vfox-pulumi = { module_path = "provider" }
+
+[tools]
+go = "{{ env.GO_VERSION_MISE }}"
+EOF
+
+git add .
+git commit -q -m "init"
+
+# Link the local plugin for testing
+mise plugin link --force vfox-pulumi "$PLUGIN_DIR" 2>/dev/null || echo "Plugin link may have failed"
+
+echo "Testing from repository root..."
+cd "$TEST_DIR"
+OUTPUT=$(mise env -s bash 2>&1 || true)
+
+if echo "$OUTPUT" | grep -q "GO_VERSION_MISE="; then
+    GO_VER=$(echo "$OUTPUT" | grep "GO_VERSION_MISE=" | sed 's/.*GO_VERSION_MISE="\([^"]*\)".*/\1/')
+    echo "✓ From root: GO_VERSION_MISE=$GO_VER"
+else
+    echo "✗ From root: GO_VERSION_MISE not found"
+    echo "Output: $OUTPUT"
+    exit 1
+fi
+
+if echo "$OUTPUT" | grep -q "PULUMI_VERSION_MISE="; then
+    PULUMI_VER=$(echo "$OUTPUT" | grep "PULUMI_VERSION_MISE=" | sed 's/.*PULUMI_VERSION_MISE="\([^"]*\)".*/\1/')
+    echo "✓ From root: PULUMI_VERSION_MISE=$PULUMI_VER"
+else
+    echo "✗ From root: PULUMI_VERSION_MISE not found"
+    echo "Output: $OUTPUT"
+    exit 1
+fi
+
+echo ""
+echo "Testing from provider/ subdirectory (REGRESSION TEST #2056)..."
+cd "$TEST_DIR/provider"
+OUTPUT=$(mise env -s bash 2>&1 || true)
+
+if echo "$OUTPUT" | grep -q "GO_VERSION_MISE="; then
+    GO_VER=$(echo "$OUTPUT" | grep "GO_VERSION_MISE=" | sed 's/.*GO_VERSION_MISE="\([^"]*\)".*/\1/')
+    echo "✓ From provider/: GO_VERSION_MISE=$GO_VER"
+else
+    echo "✗ From provider/: GO_VERSION_MISE not found (BUG!)"
+    echo "Output: $OUTPUT"
+    exit 1
+fi
+
+if echo "$OUTPUT" | grep -q "PULUMI_VERSION_MISE="; then
+    PULUMI_VER=$(echo "$OUTPUT" | grep "PULUMI_VERSION_MISE=" | sed 's/.*PULUMI_VERSION_MISE="\([^"]*\)".*/\1/')
+    echo "✓ From provider/: PULUMI_VERSION_MISE=$PULUMI_VER"
+else
+    echo "✗ From provider/: PULUMI_VERSION_MISE not found (BUG!)"
+    echo "Output: $OUTPUT"
+    exit 1
+fi
+
+echo ""
+echo "Testing from provider/subdir/ nested subdirectory..."
+cd "$TEST_DIR/provider/subdir"
+OUTPUT=$(mise env -s bash 2>&1 || true)
+
+if echo "$OUTPUT" | grep -q "GO_VERSION_MISE="; then
+    GO_VER=$(echo "$OUTPUT" | grep "GO_VERSION_MISE=" | sed 's/.*GO_VERSION_MISE="\([^"]*\)".*/\1/')
+    echo "✓ From provider/subdir/: GO_VERSION_MISE=$GO_VER"
+else
+    echo "✗ From provider/subdir/: GO_VERSION_MISE not found (BUG!)"
+    echo "Output: $OUTPUT"
+    exit 1
+fi
+
+if echo "$OUTPUT" | grep -q "PULUMI_VERSION_MISE="; then
+    PULUMI_VER=$(echo "$OUTPUT" | grep "PULUMI_VERSION_MISE=" | sed 's/.*PULUMI_VERSION_MISE="\([^"]*\)".*/\1/')
+    echo "✓ From provider/subdir/: PULUMI_VERSION_MISE=$PULUMI_VER"
+else
+    echo "✗ From provider/subdir/: PULUMI_VERSION_MISE not found (BUG!)"
+    echo "Output: $OUTPUT"
+    exit 1
+fi
+
+echo ""
+echo "=== All tests passed! ==="

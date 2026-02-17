@@ -28,9 +28,13 @@ description = "Run lua unit tests"
 depends = ["install-deps"]
 run = "busted -v"
 
+[tasks.test]
+description = "Run integration tests"
+run = "bash tests/test_mise_env_subdirectory"
+
 [tasks.ci]
 description = "Run all CI checks"
-depends = ["lint", "unit"]
+depends = ["lint", "unit", "test"]
 
 [settings]
 experimental = true

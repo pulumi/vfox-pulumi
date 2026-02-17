@@ -67,21 +67,20 @@ function PLUGIN:MiseEnv(ctx)
     -- Parse go.mod to extract version information
     local module_path = "github.com/pulumi/pulumi/pkg/v3"
     local go_mod_path = ctx.options.module_path or ""
-    local gomod = "go.mod"
+    local content = nil
 
-    if go_mod_path ~= "" and go_mod_path ~= "." then
-        gomod = go_mod_path .. "/" .. gomod
-    end
+    -- Find git root - module_path is relative to git root
+    local git_root = find_git_root()
 
-    -- First, try to read go.mod from the specified location (or current dir)
-    local content = read_file(gomod)
-
-    -- If not found and no custom path was specified, try the repo root
-    if not content and (go_mod_path == "" or go_mod_path == ".") then
-        local git_root = find_git_root()
-        if git_root then
-            content = read_file(git_root .. "/go.mod")
+    if git_root then
+        -- Construct path relative to git root
+        local gomod_path
+        if go_mod_path ~= "" and go_mod_path ~= "." then
+            gomod_path = git_root .. "/" .. go_mod_path .. "/go.mod"
+        else
+            gomod_path = git_root .. "/go.mod"
         end
+        content = read_file(gomod_path)
     end
 
     if not content then
